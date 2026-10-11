@@ -96,9 +96,12 @@ function renderGrid(){
       const st2=blk?"":(a.status&&a.status!=="acceptata"?" st-"+a.status:"");
       const mark=blk?"":a.status==="confirmata"?"✓ ":a.status==="anulata"?"✕ ":a.confirmRequestedAt?"⏳ ":"";
       const title=blk?(a.service||"Ocupat")+(a.client?" · "+a.client:""):(a.client||"Fără nume");
-      const svc=!blk&&a.service?` <span class="s">(${esc(a.service)})</span>`:"";
-      c+=`<button class="appt${blk?" block":""}${st2}${h<40?" tiny":h<70?" short":""}" data-id="${esc(a.id)}" style="top:${top}px;height:${h}px;border-left-color:${st.color}">
-        <span class="c">${mark}${esc(title)}${svc}</span>${h>=40?`<span class="t">${esc(a.start)}–${toTime(toMin(a.start)+(a.dur||30))}</span>`:""}</button>`}
+      const svcTxt=!blk&&a.service?a.service:"";
+      const size=h<40?"tiny":h<70?"short":"long";
+      const body=size==="tiny"
+        ?`<span class="row1"><span class="n">${mark}${esc(title)}</span>${svcTxt?`<span class="s">${esc(svcTxt)}</span>`:""}</span>`
+        :`<span class="n">${mark}${esc(title)}</span>${svcTxt?`<span class="s">${esc(svcTxt)}</span>`:""}${size==="long"?`<span class="t">${esc(a.start)}–${toTime(toMin(a.start)+(a.dur||30))}</span>`:""}`;
+      c+=`<button class="appt ${size}${blk?" block":""}${st2}" data-id="${esc(a.id)}" style="top:${top}px;height:${h}px;border-left-color:${st.color}">${body}</button>`}
     html+=c+`</div>`}
   const g=$("#grid");g.innerHTML=html;
   g.querySelectorAll(".slot").forEach(b=>b.onclick=()=>openAppt(null,{staff:b.parentElement.dataset.staff,start:b.dataset.t}));
