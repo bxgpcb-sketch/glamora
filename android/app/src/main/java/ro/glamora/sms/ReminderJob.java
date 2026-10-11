@@ -9,14 +9,15 @@ import android.content.Context;
 
 /** Runs about every hour; sends tomorrow's reminders once the chosen hour has passed. */
 public class ReminderJob extends JobService {
-    static final int JOB_ID = 4201;
+    static final int JOB_ID = 4202;
 
     public static void schedule(Context c) {
         JobScheduler js = c.getSystemService(JobScheduler.class);
         if (js == null) return;
+        js.cancel(4201); // old hourly job from the first version
         for (JobInfo j : js.getAllPendingJobs()) if (j.getId() == JOB_ID) return;
         JobInfo info = new JobInfo.Builder(JOB_ID, new ComponentName(c, ReminderJob.class))
-                .setPeriodic(60 * 60 * 1000L, 15 * 60 * 1000L)
+                .setPeriodic(15 * 60 * 1000L, 5 * 60 * 1000L)
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
                 .setPersisted(true)
                 .build();
@@ -27,6 +28,8 @@ public class ReminderJob extends JobService {
     public boolean onStartJob(final JobParameters params) {
         final Context app = getApplicationContext();
         new Thread(() -> {
+            Sender.sendPendingConfirmations(app);
+            Sender.publishAuto(app);
             Sender.log(app, Sender.run(app, false));
             jobFinished(params, false);
         }).start();

@@ -11,6 +11,8 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -92,7 +94,7 @@ public class Sender {
         SharedPreferences p = prefs(c);
         try {
             if (!Fb.isSignedIn(c)) return "Nu ești conectată.";
-            if (!force && !p.getBoolean("enabled", true)) return "Trimiterea automată e oprită.";
+            if (!force && !p.getBoolean("enabled", true)) return null;
             Calendar now = Calendar.getInstance();
             int hour = now.get(Calendar.HOUR_OF_DAY);
             int sendHour = p.getInt("sendHour", 10);
@@ -142,6 +144,89 @@ public class Sender {
         }
     }
 
+    static Calendar parseDate(String ymd) {
+        Calendar d = Calendar.getInstance();
+        try { d.setTime(new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).parse(ymd)); } catch (Exception ignored) { }
+        return d;
+    }
+
+    static String confirmationText(Fb.Doc a) {
+        Calendar day = parseDate(a.str("date"));
+        String client = a.str("client"), service = a.str("service");
+        return plain("Buna ziua" + (client.isEmpty() ? "" : ", " + client) + "! Programarea dvs. la Salon Vintage a fost acceptata: "
+                + DAYS[day.get(Calendar.DAY_OF_WEEK) - 1] + " " + day.get(Calendar.DAY_OF_MONTH) + " " + MONTHS[day.get(Calendar.MONTH)]
+                + ", ora " + a.str("start") + ", la " + staffName(a.str("staff"))
+                + (service.isEmpty() ? "" : " (" + service + ")") + ". Va asteptam!");
+    }
+
+    static final Set<String> inFlight = new HashSet<>();
+
+    static void clearNeeds(Context c, String id) {
+        try { Map<String, String> u = new HashMap<>(); u.put("needsConfirm", ""); Fb.update(c, "appointments/" + id, u); } catch (Exception ignored) { }
+    }
+
+    /** Sends the "programarea a fost acceptată" SMS for one appointment, if it belongs to this phone's stylist. */
+    public static String sendConfirmation(Context c, String id) {
+        synchronized (inFlight) { if (inFlight.contains(id)) return null; inFlight.add(id); }
+        try {
+            SharedPreferences p = prefs(c);
+            if (!Fb.isSignedIn(c) || !p.getBoolean("autoConfirm", true)) return null;
+            JSONObject done = new JSONObject(p.getString("confirmed", "{}"));
+            if (done.has(id)) return null;
+            String staff = p.getString("staff", "");
+            if (staff.isEmpty()) staff = loadStaff(c);
+            if (!staff.equals("tina") && !staff.equals("irina")) return null;
+            Fb.Doc a = Fb.get(c, "appointments/" + id);
+            if (a == null || !staff.equals(a.str("staff"))) return null;
+            if (!a.str("confirmSentAt").isEmpty()) { if (!a.str("needsConfirm").isEmpty()) clearNeeds(c, id); return null; }
+            String today = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new java.util.Date());
+            if (isBlock(a.str("service")) || digits(a.str("phone")).length() < 9 || "anulata".equals(a.str("status"))
+                    || a.str("date").compareTo(today) < 0) { clearNeeds(c, id); return null; }
+            if (c.checkSelfPermission(android.Manifest.permission.SEND_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                return "Lipsește permisiunea SMS: confirmarea pentru " + a.str("client") + " nu a plecat.";
+            sendSms(c, digits(a.str("phone")), confirmationText(a));
+            done.put(id, a.str("date"));
+            p.edit().putString("confirmed", done.toString()).apply();
+            Map<String, String> upd = new HashMap<>();
+            upd.put("confirmSentAt", iso());
+            upd.put("confirmVia", "auto");
+            upd.put("needsConfirm", "");
+            try { Fb.update(c, "appointments/" + id, upd); } catch (Exception e) { return "Confirmare trimisă, dar nemarcată în agendă: " + e.getMessage(); }
+            return "Confirmare trimisă către " + a.str("client") + " (" + a.str("date") + ", " + a.str("start") + ")";
+        } catch (Exception e) {
+            return "Eroare la confirmare: " + e.getMessage();
+        } finally {
+            synchronized (inFlight) { inFlight.remove(id); }
+        }
+    }
+
+    /** Confirmations for appointments colleagues created for this stylist (needsConfirm == staff). */
+    public static void sendPendingConfirmations(Context c) {
+        try {
+            SharedPreferences p = prefs(c);
+            if (!Fb.isSignedIn(c) || !p.getBoolean("autoConfirm", true)) return;
+            String staff = loadStaff(c);
+            if (!staff.equals("tina") && !staff.equals("irina")) return;
+            for (Fb.Doc d : Fb.where(c, "appointments", "needsConfirm", staff)) log(c, sendConfirmation(c, d.id));
+        } catch (Exception e) {
+            log(c, "Eroare la verificarea confirmărilor: " + e.getMessage());
+        }
+    }
+
+    /** Tells the web app whether this stylist's confirmations are automatic (config/salon.autoSms). */
+    public static void publishAuto(Context c) {
+        try {
+            SharedPreferences p = prefs(c);
+            String staff = p.getString("staff", "");
+            if (!staff.equals("tina") && !staff.equals("irina")) return;
+            boolean on = p.getBoolean("autoConfirm", true)
+                    && c.checkSelfPermission(android.Manifest.permission.SEND_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            Fb.setFlag(c, "config/salon", "autoSms", staff, on);
+        } catch (Exception e) {
+            log(c, "Nu pot salva setarea automată: " + e.getMessage());
+        }
+    }
+
     /** Forget requests for days already past. */
     static void cleanup(Context c, JSONObject sentIds, JSONObject pending) {
         try {
@@ -152,7 +237,11 @@ public class Sender {
             drop.clear();
             for (Iterator<String> it = pending.keys(); it.hasNext(); ) { String k = it.next(); if (pending.getJSONObject(k).getString("date").compareTo(today) < 0) drop.add(k); }
             for (String k : drop) pending.remove(k);
-            prefs(c).edit().putString("sentIds", sentIds.toString()).putString("pending", pending.toString()).apply();
+            JSONObject done = new JSONObject(prefs(c).getString("confirmed", "{}"));
+            drop.clear();
+            for (Iterator<String> it = done.keys(); it.hasNext(); ) { String k = it.next(); if (done.getString(k).compareTo(today) < 0) drop.add(k); }
+            for (String k : drop) done.remove(k);
+            prefs(c).edit().putString("sentIds", sentIds.toString()).putString("pending", pending.toString()).putString("confirmed", done.toString()).apply();
         } catch (Exception ignored) { }
     }
 

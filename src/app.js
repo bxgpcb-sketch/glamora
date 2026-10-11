@@ -1,5 +1,6 @@
 import { db, authApi } from "./fb.js";
 import DEFAULTS from "./default-config.json";
+const APP=window.GlamoraAndroid||null; // present only inside the Android app
 
 const STAFF=[{id:"tina",name:"Tina G",role:"Coafor",color:"var(--tina)"},{id:"mymy",name:"Mymy C",role:"Cosmetică",color:"var(--mymy)"},{id:"irina",name:"Irina B",role:"Manichiură",color:"var(--irina)"}];
 const DURS=[15,30,45,60,75,90,105,120,150,180,210,240];
@@ -98,7 +99,8 @@ function subscribeDay(){
   if(S.unsubAppts){S.unsubAppts();S.unsubAppts=null}
   S.appts=[];S.needScroll=true;renderGrid();if(!S.db)return;
   S.unsubAppts=S.db.collection("appointments").where("date","==",S.date).onSnapshot(snap=>{
-    S.appts=snap.docs.map(d=>({id:d.id,...d.data()}));renderGrid()},e=>toast("Agenda nu s-a încărcat ("+e.code+")"));
+    S.appts=snap.docs.map(d=>({id:d.id,...d.data()}));renderGrid();
+    if(APP&&S.profile?.staff)S.appts.filter(x=>x.needsConfirm===S.profile.staff).forEach(x=>{try{APP.newAppointment(x.id)}catch(e){}})},e=>toast("Agenda nu s-a încărcat ("+e.code+")"));
 }
 function goDate(d){S.date=d;subscribeDay()}
 $("#prevDay").onclick=()=>goDate(shiftDate(S.date,-1));
@@ -117,7 +119,8 @@ $("#menuBtn").onclick=()=>{const dr=$("#drawer");
     <button class="item" id="mRem">${ICON.sms}Reamintiri pentru mâine</button>
     <button class="item" id="mClients">${ICON.user}Caută clientă</button>
     <button class="item" id="mAcc">${ICON.user}Detalii cont</button>
-    ${/android/i.test(navigator.userAgent)?`<a class="item" href="./glamora-sms.apk" download="glamora-sms.apk" style="display:flex;align-items:center;gap:12px;min-height:52px;padding:0 10px;border-radius:12px;font-size:16px;font-weight:600">${ICON.sms}Descarcă Glamora SMS</a>`:""}
+    ${APP?`<button class="item" id="mSms">${ICON.sms}SMS automate</button>`:""}
+    ${!APP&&/android/i.test(navigator.userAgent)?`<a class="item" href="./glamora-sms.apk" download="glamora-sms.apk" style="display:flex;align-items:center;gap:12px;min-height:52px;padding:0 10px;border-radius:12px;font-size:16px;font-weight:600">${ICON.sms}Descarcă Glamora SMS</a>`:""}
     <span style="flex:1"></span>
     <button class="item danger-item" id="mOut">${ICON.out}Deconectare</button>
     <button class="btn" id="mClose">Închide</button></nav>`;
@@ -130,8 +133,9 @@ $("#menuBtn").onclick=()=>{const dr=$("#drawer");
   $("#mClients").onclick=()=>{close();openClients()};
   $("#mRem").onclick=()=>{close();openReminders(shiftDate(todayStr(),1))};
   $("#mAcc").onclick=()=>{close();openAccount()};
+  if(APP)$("#mSms").onclick=()=>{close();openSmsSettings()};
   let armedOut=false;$("#mOut").onclick=async()=>{if(!armedOut){armedOut=true;$("#mOut").lastChild.textContent="Apasă din nou pentru deconectare";return}
-    close();await authApi.signOut()};
+    close();if(APP)try{APP.clearSession()}catch(e){}await authApi.signOut()};
 };
 
 /* ---------- appointment sheet ---------- */
@@ -230,9 +234,14 @@ function openAppt(a,pre){
     const now=new Date().toISOString();
     const data={date,staff,start:f("#fStart").value,dur:Number(f("#fDur").value)||30,
       client:cp.name,phone:cp.phone,service:svcIn.value.trim(),status,note:f("#fNote").value.trim(),updatedAt:now,createdAt:a.createdAt||now};
+    const auto=isNew&&digits(data.phone).length>=6&&!isBlock(data.service)&&S.autoSms&&S.autoSms[staff];
+    if(auto)data.needsConfirm=staff;
     f("#saveBtn").disabled=true;
     try{let id=a.id;if(isNew)id=(await S.db.collection("appointments").add(data)).id;else{const {id:_omit,...prev}=a;await S.db.collection("appointments").doc(a.id).set({...prev,...data})}
       await saveClient(data).catch(()=>{});if(data.date!==S.date)goDate(data.date);
+      if(auto){close();
+        if(APP&&S.profile?.staff===staff){try{APP.newAppointment(id)}catch(e){}toast("Salvată · SMS de confirmare trimis automat")}
+        else toast("Salvată · SMS-ul pleacă automat de pe telefonul lui "+staffName(staff));return}
       if(isNew&&digits(data.phone).length>=6&&!isBlock(data.service)){showAccepted(id,data);return}
       close();toast("Programare salvată")}
     catch(err){f("#saveBtn").disabled=false;toast(err.code==="permission-denied"?"Nu ai drept de modificare":"Nu s-a salvat ("+err.code+")")}};
@@ -284,7 +293,7 @@ function showAccepted(id,a){
     </div>
     <div class="sheet-foot"><button type="button" class="btn" id="okSkip">Gata</button></div></div>`;
   const close=()=>{m.hidden=true;m.innerHTML="";lockScroll(false)};
-  const mark=via=>S.db.collection("appointments").doc(id).update({confirmSentAt:new Date().toISOString(),confirmVia:via}).catch(()=>{});
+  const mark=via=>S.db.collection("appointments").doc(id).update({confirmSentAt:new Date().toISOString(),confirmVia:via,needsConfirm:""}).catch(()=>{});
   $("#okSms").addEventListener("click",()=>{mark("sms");setTimeout(close,400)});
   $("#okWa").addEventListener("click",()=>{mark("wa");setTimeout(close,400)});
   $("#okCopy").onclick=()=>copyText(msg);
@@ -298,6 +307,44 @@ function searchPeople(q,max){const fq=fold(q),dq=digits(q),seen=new Set(),out=[]
   for(const src of [S.clients])for(const p of src){if(out.length>=max)return out;
     const k=digits(p.phone)||fold(p.name);if(seen.has(k)||!test(p))continue;seen.add(k);out.push({name:p.name,phone:p.phone||""})}
   return out}
+
+/* ---------- automatic SMS settings (Android app only) ---------- */
+function openSmsSettings(){
+  const m=$("#modal");let st={};
+  const read=()=>{try{st=JSON.parse(APP.getSettings())}catch(e){st={}}};read();
+  const draw=()=>{const me=S.profile?.staff;
+    const can=me==="tina"||me==="irina";
+    m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sTitle">
+      <div class="sheet-head"><h2 id="sTitle">SMS automate</h2><button type="button" class="btn ghost icon" id="xBtn" aria-label="Închide">✕</button></div>
+      <div class="sheet-body">
+      ${!me?`<p class="warn">Alege mai întâi cine ești (Detalii cont → Schimbă cine sunt).</p>`:!can?`<p class="hint" style="font-size:14px">Pentru ${esc(staffName(me))} mesajele se trimit manual (SMS / SMS detaliat).</p>`:`
+        <p class="hint" style="font-size:14px;margin:0 0 6px">Mesajele pleacă de pe numărul acestui telefon, doar pentru programările lui ${esc(staffName(me))}.</p>
+        <label class="tog"><input type="checkbox" id="sConf" ${st.confirm?"checked":""}><span><b>Confirmare la programare nouă</b><small>„Programarea dvs. a fost acceptată…”, imediat după salvare</small></span></label>
+        <label class="tog"><input type="checkbox" id="sRem" ${st.remind?"checked":""}><span><b>Reamintire cu o zi înainte (1/0)</b><small>Răspunsul 1 sau 0 colorează programarea</small></span></label>
+        <div class="field" style="margin-top:8px"><label for="sHour">Ora reamintirilor</label><select id="sHour">${[8,9,10,11,12,13,14,15,16,17,18,19,20].map(h=>`<option value="${h}" ${h===st.sendHour?"selected":""}>${String(h).padStart(2,"0")}:00</option>`).join("")}</select></div>
+        <h3 class="sec">Telefon</h3>
+        <div class="kv"><span>Permisiune SMS</span><b style="color:${st.smsOk?"var(--ok)":"var(--bad)"}">${st.smsOk?"✓ Da":"✕ Lipsește"}</b></div>
+        ${st.smsOk?"":`<button class="btn primary" id="sPerm" style="width:100%;margin-top:8px">Permite SMS</button>`}
+        <div class="kv"><span>Rulează în fundal</span><b style="color:${st.batteryOk?"var(--ok)":"var(--bad)"}">${st.batteryOk?"✓ Da":"✕ Nu"}</b></div>
+        ${st.batteryOk?"":`<button class="btn" id="sBatt" style="width:100%;margin-top:8px">Permite rularea în fundal</button>`}
+        <button class="btn" id="sNow" style="width:100%;margin-top:14px">Trimite acum reamintirile pentru mâine</button>
+        <h3 class="sec">Ce s-a trimis / primit</h3>
+        <pre class="smslog">${esc(st.log||"Nimic încă.")}</pre>`}
+      </div></div>`;
+    $("#xBtn").onclick=close;
+    if(!can)return;
+    const save=()=>{try{APP.setSettings(JSON.stringify({confirm:$("#sConf").checked,remind:$("#sRem").checked,sendHour:Number($("#sHour").value)}))}catch(e){}};
+    $("#sConf").onchange=save;$("#sRem").onchange=save;$("#sHour").onchange=save;
+    const p=$("#sPerm");if(p)p.onclick=()=>APP.requestSmsPermission();
+    const b=$("#sBatt");if(b)b.onclick=()=>APP.openBatterySettings();
+    $("#sNow").onclick=()=>{APP.runNow();toast("Se trimit…");setTimeout(()=>{read();if(!m.hidden)draw()},5000)};
+  };
+  const close=()=>{m.hidden=true;m.innerHTML="";lockScroll(false);window.glamoraRefresh=null};
+  window.glamoraRefresh=()=>{read();if(!m.hidden)draw()};
+  m.hidden=false;lockScroll(true);draw();
+}
+/* Android back button: close the top overlay first */
+window.glamoraBack=()=>{for(const id of ["#calModal","#drawer","#modal"]){const el=$(id);if(el&&!el.hidden){el.hidden=true;el.innerHTML="";if(id!=="#calModal"||$("#modal").hidden)lockScroll(false);return true}}return false};
 
 /* ---------- reminders (from the menu) ---------- */
 function openReminders(day){
@@ -434,7 +481,7 @@ function startData(){
   S.db=db;
   subs.push(db.doc("config/salon").onSnapshot(s=>{
     if(!s.exists){if(!s.fromCache&&!seeded){seeded=true;db.doc("config/salon").set(DEFAULTS).catch(()=>{})}return}
-    const d=s.data();S.services=Array.isArray(d.services)?d.services:[];if(d.hours)S.hours=d.hours;renderGrid()},e=>toast("Eroare la încărcare ("+e.code+")")));
+    const d=s.data();S.services=Array.isArray(d.services)?d.services:[];if(d.hours)S.hours=d.hours;S.autoSms=d.autoSms||{};renderGrid()},e=>toast("Eroare la încărcare ("+e.code+")")));
   subs.push(db.collection("clients").onSnapshot(s=>{S.clients=s.docs.map(d=>({id:d.id,...d.data()}))},()=>{}));
   subscribeDay();
 }
@@ -449,7 +496,8 @@ renderGrid();
 setInterval(()=>{if(S.date===todayStr()&&$("#modal").hidden&&!$("#appRoot").hidden)renderGrid()},60000);
 authApi.onChange(async user=>{
   $("#splash").hidden=true;
-  if(!user){stopData();S.user=null;S.profile=null;showLogin();return}
+  if(!user){if(APP)try{APP.clearSession()}catch(e){}stopData();S.user=null;S.profile=null;showLogin();return}
+  if(APP)try{APP.setSession(user.refreshToken||"",user.uid,user.email||"")}catch(e){}
   S.user=user;$("#login").hidden=true;$("#appRoot").hidden=false;$("#lPass").value="";
   try{const p=await db.doc("users/"+user.uid).get();S.profile=p.exists?p.data():null}catch(e){S.profile=null}
   startData();

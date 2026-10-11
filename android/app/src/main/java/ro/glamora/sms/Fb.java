@@ -122,6 +122,28 @@ public class Fb {
         request("PATCH", url.toString(), new JSONObject().put("fields", fields).toString(), "application/json", token(c));
     }
 
+    /** Set one boolean inside a map field, e.g. config/salon autoSms.tina = true. */
+    public static void setFlag(Context c, String path, String mapField, String key, boolean value) throws Exception {
+        String url = DOCS + "/" + path + "?currentDocument.exists=true&updateMask.fieldPaths="
+                + URLEncoder.encode(mapField + "." + key, "UTF-8");
+        JSONObject inner = new JSONObject().put(key, new JSONObject().put("booleanValue", value));
+        JSONObject fields = new JSONObject().put(mapField, new JSONObject().put("mapValue", new JSONObject().put("fields", inner)));
+        request("PATCH", url, new JSONObject().put("fields", fields).toString(), "application/json", token(c));
+    }
+
+    /** Documents of a collection where field == value. */
+    public static List<Doc> where(Context c, String collection, String field, String value) throws Exception {
+        JSONObject q = new JSONObject("{\"structuredQuery\":{\"from\":[{\"collectionId\":" + JSONObject.quote(collection) + "}],"
+                + "\"where\":{\"fieldFilter\":{\"field\":{\"fieldPath\":" + JSONObject.quote(field) + "},\"op\":\"EQUAL\",\"value\":{\"stringValue\":" + JSONObject.quote(value) + "}}}}}");
+        JSONArray arr = new JSONArray(request("POST", DOCS + ":runQuery", q.toString(), "application/json", token(c)));
+        List<Doc> out = new ArrayList<>();
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject o = arr.getJSONObject(i);
+            if (o.has("document")) out.add(toDoc(o.getJSONObject("document")));
+        }
+        return out;
+    }
+
     static Doc toDoc(JSONObject d) {
         Doc doc = new Doc();
         String name = d.optString("name", "");
