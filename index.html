@@ -24,7 +24,7 @@
   --appt-bg:#fdf3f7; --ok:#2f7a4f; --ok-bg:#e3f2e8; --bad:#b03636;
   --wa:#1f8f4e; --call:#2f6fb5;
   --tina:#c2577f; --mymy:#7b5cc4; --irina:#2f8f7f;
-  --colw:190px;
+  --colw:205px;
   --f-body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
   --ppm:1.6;
@@ -68,13 +68,17 @@ a{color:inherit;text-decoration:none}
 .now{position:absolute;left:0;right:0;height:0;border-top:2px solid var(--bad);z-index:3;pointer-events:none}
 .appt{position:absolute;left:50px;right:3px;z-index:2;border-radius:6px;padding:2px 6px;justify-content:flex-start;gap:1px;text-align:left;border:1px solid var(--line);border-left:4px solid;background:var(--appt-bg);overflow:hidden;display:flex;flex-direction:column;min-width:0;box-shadow:0 1px 3px rgba(90,30,55,.12)}
 .appt .t{font-family:var(--f-mono);font-size:11px;color:var(--muted);white-space:nowrap}
-.appt .c{font-weight:700;font-size:13px;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
-.appt.tiny{justify-content:center}
-.appt.short .c{-webkit-line-clamp:1;display:block;white-space:nowrap;text-overflow:ellipsis}
-.appt.tiny .c{-webkit-line-clamp:1;display:block;white-space:nowrap;text-overflow:ellipsis}
 .appt.block{background:repeating-linear-gradient(135deg,var(--surface-2) 0 6px,#f0e4e9 6px 12px);border-left-color:var(--muted)!important;box-shadow:none}
-.appt.block .c{color:var(--muted)}
-.appt .s{font-weight:500;color:var(--fg)}
+.appt.block .n{color:var(--muted)}
+.appt .n{font-weight:700;font-size:13px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.appt .s{font-size:12px;line-height:1.25;color:#5b3a4a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.appt.tiny{justify-content:center;padding-top:0;padding-bottom:0}
+.appt.tiny .row1{display:flex;align-items:baseline;gap:5px;min-width:0}
+.appt.tiny .n{flex:0 1 auto}
+.appt.tiny .s{flex:0 1 auto;max-width:55%;font-weight:600}
+.appt.short .n,.appt.long .n{white-space:normal;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}
+.appt.long .n{-webkit-line-clamp:2}
+.appt.short .s,.appt.long .s{font-weight:600}
 
 /* overlays */
 .scrim{position:fixed;inset:0;background:rgba(40,15,28,.45);z-index:20;display:flex;align-items:flex-start;justify-content:center;padding:calc(env(safe-area-inset-top,0px) + 10px) 8px calc(env(safe-area-inset-bottom,0px) + 18px)}
@@ -151,7 +155,7 @@ a{color:inherit;text-decoration:none}
 .crow[aria-disabled="true"]{opacity:.35;pointer-events:none}
 .appt.st-confirmata{background:var(--ok-bg)}
 .appt.st-anulata{background:#f8e3e3;opacity:.7}
-.appt.st-anulata .c{text-decoration:line-through}
+.appt.st-anulata .n{text-decoration:line-through}
 
 .tog{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line-soft)}
 .tog input{width:24px;height:24px;margin-top:2px;accent-color:var(--accent);flex:none}
@@ -257,6 +261,6 @@ html,body{margin:0}
 <div id="toast" class="toast" hidden></div>
 
 
-<script type="module" src="./app.js?v=1791743169"></script>
+<script type="module" src="./app.js?v=1791744169"></script>
 </body>
 </html>
