@@ -17,6 +17,7 @@ public class SmsReceiver extends BroadcastReceiver {
         SmsMessage[] msgs = Telephony.Sms.Intents.getMessagesFromIntent(intent);
         if (msgs == null || msgs.length == 0) return;
         final Map<String, StringBuilder> bySender = new LinkedHashMap<>();
+        final long when = msgs[0] != null ? msgs[0].getTimestampMillis() : System.currentTimeMillis();
         for (SmsMessage m : msgs) {
             if (m == null) continue;
             String from = m.getDisplayOriginatingAddress();
@@ -30,7 +31,7 @@ public class SmsReceiver extends BroadcastReceiver {
         new Thread(() -> {
             try {
                 for (Map.Entry<String, StringBuilder> e : bySender.entrySet()) {
-                    Sender.log(app, Sender.handleReply(app, e.getKey(), e.getValue().toString()));
+                    Sender.log(app, Sender.handleReply(app, e.getKey(), e.getValue().toString(), when));
                 }
             } finally {
                 pr.finish();

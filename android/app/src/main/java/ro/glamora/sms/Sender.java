@@ -130,6 +130,7 @@ public class Sender {
                 upd.put("confirmRequestedVia", "auto");
                 upd.put("remindedAt", t);
                 upd.put("remindedVia", "sms");
+                upd.put("phoneKey", key(phone));
                 try { Fb.update(c, "appointments/" + a.id, upd); } catch (Exception e) { log(c, "Trimis, dar nu s-a putut marca în agendă: " + e.getMessage()); }
                 log(c, "Trimis SMS 1/0 către " + a.str("client") + " (" + a.str("start") + ")");
                 sent++;
@@ -245,29 +246,87 @@ public class Sender {
         } catch (Exception ignored) { }
     }
 
-    /** Handles an incoming SMS. Returns a log line or null when it isn't a reply we're waiting for. */
-    public static String handleReply(Context c, String from, String body) {
+    /** Status a reply means: "confirmata", "anulata" or null when it isn't a 1/0 answer. */
+    static String replyStatus(String body) {
+        String b = plain(body).trim().toLowerCase(Locale.ROOT);
+        if (b.matches("^(1|da)(\\b.*|$)")) return "confirmata";
+        if (b.matches("^(0|nu)(\\b.*|$)")) return "anulata";
+        return null;
+    }
+
+    /**
+     * Handles an incoming SMS (from the live receiver or from the inbox scan).
+     * Finds the client's waiting appointment in Firestore by the last 9 digits of her number.
+     */
+    public static synchronized String handleReply(Context c, String from, String body, long when) {
         try {
-            JSONObject pending = new JSONObject(prefs(c).getString("pending", "{}"));
+            String status = replyStatus(body);
+            if (status == null || !Fb.isSignedIn(c)) return null;
+            SharedPreferences p = prefs(c);
             String k = key(from);
-            if (!pending.has(k)) return null;
-            String b = plain(body).trim().toLowerCase(Locale.ROOT);
-            String status;
-            if (b.matches("^(1|da)(\\b.*|$)")) status = "confirmata";
-            else if (b.matches("^(0|nu)(\\b.*|$)")) status = "anulata";
-            else return null;
-            JSONObject info = pending.getJSONObject(k);
+            String msgId = k + "|" + plain(body).trim().toLowerCase(Locale.ROOT) + "|" + new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new java.util.Date(when));
+            JSONObject seen = new JSONObject(p.getString("seenReplies", "{}"));
+            if (seen.has(msgId)) return null;
+
+            String today = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new java.util.Date());
+            String staff = p.getString("staff", "");
+            Fb.Doc best = null;
+            for (Fb.Doc a : Fb.where(c, "appointments", "phoneKey", k)) {
+                if (a.str("confirmRequestedAt").isEmpty()) continue;
+                if (a.str("date").compareTo(today) < 0) continue;
+                if (!a.str("replyAt").isEmpty()) continue;
+                boolean mine = staff.isEmpty() || staff.equals(a.str("staff"));
+                if (best == null || (mine && !staff.equals(best.str("staff"))) || (mine == staff.equals(best.str("staff")) && a.str("date").compareTo(best.str("date")) < 0)) best = a;
+            }
+            String id = best == null ? null : best.id;
+            String client = best == null ? "" : best.str("client");
+            String date = best == null ? "" : best.str("date");
+            if (id == null) { // older appointments without phoneKey: use what this phone sent
+                JSONObject pending = new JSONObject(p.getString("pending", "{}"));
+                if (pending.has(k)) {
+                    JSONObject info = pending.getJSONObject(k);
+                    id = info.getString("id"); client = info.optString("client"); date = info.optString("date");
+                    pending.remove(k);
+                    p.edit().putString("pending", pending.toString()).apply();
+                }
+            }
+            seen.put(msgId, today);
+            if (seen.length() > 300) seen = new JSONObject();
+            p.edit().putString("seenReplies", seen.toString()).apply();
+            if (id == null) return "Răspuns „" + body.trim() + "” de la …" + k.substring(Math.max(0, k.length() - 4)) + ": nu am găsit programare care așteaptă răspuns.";
+
             Map<String, String> upd = new HashMap<>();
             upd.put("status", status);
             upd.put("replyText", body.trim());
             upd.put("replyAt", iso());
-            Fb.update(c, "appointments/" + info.getString("id"), upd);
-            pending.remove(k);
-            prefs(c).edit().putString("pending", pending.toString()).apply();
-            return (status.equals("confirmata") ? "✓ Confirmat: " : "✕ Anulat: ") + info.optString("client") + " (" + info.getString("date") + ")";
+            Fb.update(c, "appointments/" + id, upd);
+            return (status.equals("confirmata") ? "✓ Confirmat: " : "✕ Anulat: ") + client + " (" + date + ")";
         } catch (Exception e) {
             return "Eroare la răspuns: " + e.getMessage();
         }
+    }
+
+    /** Safety net: reads 1/0 replies from the SMS inbox in case the live receiver was blocked by the phone. */
+    public static void scanInbox(Context c) {
+        if (c.checkSelfPermission(android.Manifest.permission.READ_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+        if (!Fb.isSignedIn(c)) return;
+        SharedPreferences p = prefs(c);
+        long since = p.getLong("inboxSince", System.currentTimeMillis() - 3L * 24 * 3600 * 1000);
+        long max = since;
+        try (android.database.Cursor cur = c.getContentResolver().query(android.provider.Telephony.Sms.Inbox.CONTENT_URI,
+                new String[]{"address", "body", "date"}, "date > ?", new String[]{String.valueOf(since)}, "date ASC")) {
+            if (cur == null) return;
+            while (cur.moveToNext()) {
+                String addr = cur.getString(0), body = cur.getString(1);
+                long when = cur.getLong(2);
+                if (when > max) max = when;
+                if (addr == null || body == null || replyStatus(body) == null) continue;
+                log(c, handleReply(c, addr, body, when));
+            }
+        } catch (Exception e) {
+            log(c, "Nu pot citi mesajele primite: " + e.getMessage());
+        }
+        p.edit().putLong("inboxSince", max).apply();
     }
 
     public static void log(Context c, String line) {

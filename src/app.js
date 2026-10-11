@@ -216,7 +216,7 @@ function openAppt(a,pre){
   /* remember what was sent (existing appointments only) */
   if(!isNew){const now=()=>new Date().toISOString(),ref=()=>S.db.collection("appointments").doc(a.id);
     f("#cSms").addEventListener("click",()=>ref().update({remindedAt:now(),remindedVia:"sms"}).catch(()=>{}));
-    f("#cSmsD").addEventListener("click",()=>ref().update({confirmRequestedAt:now(),confirmRequestedVia:"manual"}).catch(()=>{}));
+    f("#cSmsD").addEventListener("click",()=>ref().update({confirmRequestedAt:now(),confirmRequestedVia:"manual",phoneKey:digits(splitClient(f("#fClient").value).phone).slice(-9)}).catch(()=>{}));
     f("#cWa").addEventListener("click",()=>ref().update({remindedAt:now(),remindedVia:"wa"}).catch(()=>{}));}
 
   /* overlap check */
@@ -233,7 +233,7 @@ function openAppt(a,pre){
     if(!cp.name&&!isBlock(svcIn.value)){f("#fClient").focus();toast("Scrie numele clientei");return}
     const now=new Date().toISOString();
     const data={date,staff,start:f("#fStart").value,dur:Number(f("#fDur").value)||30,
-      client:cp.name,phone:cp.phone,service:svcIn.value.trim(),status,note:f("#fNote").value.trim(),updatedAt:now,createdAt:a.createdAt||now};
+      client:cp.name,phone:cp.phone,phoneKey:digits(cp.phone).slice(-9),service:svcIn.value.trim(),status,note:f("#fNote").value.trim(),updatedAt:now,createdAt:a.createdAt||now};
     const auto=isNew&&digits(data.phone).length>=6&&!isBlock(data.service)&&S.autoSms&&S.autoSms[staff];
     if(auto)data.needsConfirm=staff;
     f("#saveBtn").disabled=true;
@@ -359,7 +359,7 @@ function openReminders(day){
   m.hidden=false;lockScroll(true);
   const close=()=>{if(unsub)unsub();m.hidden=true;m.innerHTML="";lockScroll(false)};
   $("#xBtn").onclick=close;
-  const mark=async(id,via)=>{const t=new Date().toISOString();try{await S.db.collection("appointments").doc(id).update(via==="smsd"?{remindedAt:t,remindedVia:"sms",confirmRequestedAt:t,confirmRequestedVia:"manual"}:{remindedAt:t,remindedVia:via})}catch(e){}};
+  const mark=async(id,via)=>{const t=new Date().toISOString();try{await S.db.collection("appointments").doc(id).update(via==="smsd"?{remindedAt:t,remindedVia:"sms",confirmRequestedAt:t,confirmRequestedVia:"manual",phoneKey:digits((rows.find(r=>r.id===id)||{}).phone).slice(-9)}:{remindedAt:t,remindedVia:via})}catch(e){}};
   const draw=()=>{const el=$("#rList");if(!el)return;
     const list=rows.filter(a=>!isBlock(a.service)).sort((x,y)=>x.start.localeCompare(y.start));
     const withPhone=list.filter(a=>digits(a.phone).length>=6),sent=withPhone.filter(a=>a.remindedAt).length;

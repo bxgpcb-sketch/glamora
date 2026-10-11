@@ -28,6 +28,7 @@ public class ReminderJob extends JobService {
     public boolean onStartJob(final JobParameters params) {
         final Context app = getApplicationContext();
         new Thread(() -> {
+            Sender.scanInbox(app);
             Sender.sendPendingConfirmations(app);
             Sender.publishAuto(app);
             Sender.log(app, Sender.run(app, false));
