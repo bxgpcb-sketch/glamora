@@ -7,6 +7,6 @@ import android.content.Intent;
 public class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
-        ReminderJob.schedule(context.getApplicationContext());
+        try { ReminderJob.schedule(context.getApplicationContext()); } catch (Throwable t) { Sender.log(context.getApplicationContext(), "Eroare la pornire: " + t); }
     }
 }
