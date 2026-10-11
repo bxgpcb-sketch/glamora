@@ -73,27 +73,41 @@ function openCalendar(current,onPick){
 }
 
 /* ---------- agenda ---------- */
+/* Program salon: săptămânile alternează dimineața / după-amiaza (luni 12.10.2026 = dimineața).
+   Sâmbăta 09:00–18:00, duminica 09:00–14:00. În afara programului rândurile sunt gri, dar se pot face programări. */
+const GRID=["08:00","20:00"];
+const SCHEDULE={ref:"2026-10-12",morning:["08:00","14:00"],afternoon:["14:00","20:00"],sat:["09:00","18:00"],sun:["09:00","14:00"]};
+function workRange(ds){const d=new Date(ds+"T12:00:00"),dow=d.getDay();
+  if(dow===6)return SCHEDULE.sat.map(toMin);if(dow===0)return SCHEDULE.sun.map(toMin);
+  const mon=new Date(d);mon.setDate(d.getDate()-((dow+6)%7));
+  const weeks=Math.round((mon-new Date(SCHEDULE.ref+"T12:00:00"))/(7*864e5));
+  return (((weeks%2)+2)%2===0?SCHEDULE.morning:SCHEDULE.afternoon).map(toMin)}
+function workLabel(ds){const [a,b]=workRange(ds);return toTime(a)+"–"+toTime(b-15)}
 function renderGrid(){
-  const start=toMin(S.hours.start),end=toMin(S.hours.end),k=ppm(),H=(end-start)*k;
+  const start=toMin(GRID[0]),end=toMin(GRID[1]),k=ppm(),H=(end-start)*k,[ws,we]=workRange(S.date);
   let html="";
   for(const st of STAFF)html+=`<div class="colhead" style="border-bottom-color:${st.color}"><span class="nm">${esc(st.name)}</span><span class="rl">${esc(st.role)}</span></div>`;
   const d=new Date(),nowM=d.getHours()*60+d.getMinutes();
   for(const st of STAFF){let c=`<div class="col" style="height:${H}px" data-staff="${st.id}">`;
-    for(let m=start;m<end;m+=STEP)c+=`<button class="slot${m%60===0?" hour":""}" style="top:${(m-start)*k}px;height:${STEP*k}px;${m===start?"border-top:0":""}" data-t="${toTime(m)}" aria-label="Programare nouă la ${st.name}, ${toTime(m)}">${toTime(m)}</button>`;
+    for(let m=start;m<end;m+=STEP)c+=`<button class="slot${m%60===0?" hour":""}${m<ws||m>=we?" off":""}" style="top:${(m-start)*k}px;height:${STEP*k}px;${m===start?"border-top:0":""}" data-t="${toTime(m)}" aria-label="Programare nouă la ${st.name}, ${toTime(m)}">${toTime(m)}</button>`;
     if(S.date===todayStr()&&nowM>=start&&nowM<=end)c+=`<div class="now" style="top:${(nowM-start)*k}px"></div>`;
     for(const a of S.appts.filter(a=>a.staff===st.id)){const top=(toMin(a.start)-start)*k+1,h=Math.max(STEP*k-2,(a.dur||30)*k-2);
       const blk=isBlock(a.service);
       const st2=blk?"":(a.status&&a.status!=="acceptata"?" st-"+a.status:"");
-      c+=`<button class="appt${blk?" block":""}${st2}" data-id="${esc(a.id)}" style="top:${top}px;height:${h}px;border-left-color:${st.color}">
-        <span class="t">${esc(a.start)} · ${durLabel(a.dur||30)}${!blk&&a.status==="confirmata"?" · ✓ Confirmată":""}${!blk&&a.status==="anulata"?" · ✕ Anulată":""}${!blk&&a.status!=="confirmata"&&a.status!=="anulata"&&a.confirmRequestedAt?" · ⏳":""}</span><span class="c">${esc(blk?(a.service||"Ocupat"):(a.client||"Fără nume"))}</span>${blk?(a.client?`<span class="s">${esc(a.client)}</span>`:""):(a.service?`<span class="s">${esc(a.service)}</span>`:"")}</button>`}
+      const mark=blk?"":a.status==="confirmata"?"✓ ":a.status==="anulata"?"✕ ":a.confirmRequestedAt?"⏳ ":"";
+      const title=blk?(a.service||"Ocupat")+(a.client?" · "+a.client:""):(a.client||"Fără nume");
+      const svc=!blk&&a.service?` <span class="s">(${esc(a.service)})</span>`:"";
+      c+=`<button class="appt${blk?" block":""}${st2}${h<40?" tiny":h<70?" short":""}" data-id="${esc(a.id)}" style="top:${top}px;height:${h}px;border-left-color:${st.color}">
+        <span class="c">${mark}${esc(title)}${svc}</span>${h>=40?`<span class="t">${esc(a.start)}–${toTime(toMin(a.start)+(a.dur||30))}</span>`:""}</button>`}
     html+=c+`</div>`}
   const g=$("#grid");g.innerHTML=html;
   g.querySelectorAll(".slot").forEach(b=>b.onclick=()=>openAppt(null,{staff:b.parentElement.dataset.staff,start:b.dataset.t}));
   g.querySelectorAll(".appt").forEach(b=>b.onclick=()=>openAppt(S.appts.find(a=>a.id===b.dataset.id)));
   $("#dateLabel").textContent=fmtDate(S.date);
-  $("#dateSub").textContent=relDay(S.date)+" · "+S.appts.length+(S.appts.length===1?" programare":" programări");
+  {const r=relDay(S.date);$("#dateSub").textContent=(/^\d{4}$/.test(r)?"":r+" · ")+workLabel(S.date)+" · "+S.appts.length+" prog."}
   if(S.needScroll){S.needScroll=false;const sc=$("#scroller");
-    sc.scrollTop=S.date===todayStr()&&nowM>start&&nowM<end?Math.max(0,(nowM-start-30)*k):0}
+    const target=S.date===todayStr()&&nowM>ws&&nowM<we?nowM-30:ws;
+    sc.scrollTop=Math.max(0,(target-start)*k)}
 }
 function subscribeDay(){
   if(S.unsubAppts){S.unsubAppts();S.unsubAppts=null}
@@ -106,7 +120,7 @@ function goDate(d){S.date=d;subscribeDay()}
 $("#prevDay").onclick=()=>goDate(shiftDate(S.date,-1));
 $("#nextDay").onclick=()=>goDate(shiftDate(S.date,1));
 $("#dateBtn").onclick=()=>openCalendar(S.date,goDate);
-$("#newBtn").onclick=()=>{const d=new Date(),nm=Math.ceil((d.getHours()*60+d.getMinutes())/STEP)*STEP,s=toMin(S.hours.start),e=toMin(S.hours.end);
+$("#newBtn").onclick=()=>{const d=new Date(),nm=Math.ceil((d.getHours()*60+d.getMinutes())/STEP)*STEP,[s,e]=workRange(S.date);
   openAppt(null,{staff:S.profile?.staff||"tina",start:toTime(S.date===todayStr()&&nm>s&&nm<e?nm:s)})};
 
 /* ---------- menu ---------- */
@@ -139,7 +153,7 @@ $("#menuBtn").onclick=()=>{const dr=$("#drawer");
 };
 
 /* ---------- appointment sheet ---------- */
-function timeOptions(sel){const s=toMin(S.hours.start),e=toMin(S.hours.end);let o="";
+function timeOptions(sel){const s=toMin(GRID[0]),e=toMin(GRID[1]);let o="";
   for(let m=s;m<e;m+=STEP)o+=`<option ${toTime(m)===sel?"selected":""}>${toTime(m)}</option>`;
   if(sel&&(toMin(sel)<s||toMin(sel)>=e))o=`<option selected>${sel}</option>`+o;return o}
 function openAppt(a,pre){
