@@ -265,7 +265,7 @@ public class Sender {
             SharedPreferences p = prefs(c);
             String k = key(from);
             String msgId = k + "|" + plain(body).trim().toLowerCase(Locale.ROOT) + "|" + new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new java.util.Date(when));
-            JSONObject seen = new JSONObject(p.getString("seenReplies", "{}"));
+            JSONObject seen = new JSONObject(p.getString("seenReplies2", "{}"));
             if (seen.has(msgId)) return null;
 
             String today = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new java.util.Date());
@@ -277,6 +277,19 @@ public class Sender {
                 if (!a.str("replyAt").isEmpty()) continue;
                 boolean mine = staff.isEmpty() || staff.equals(a.str("staff"));
                 if (best == null || (mine && !staff.equals(best.str("staff"))) || (mine == staff.equals(best.str("staff")) && a.str("date").compareTo(best.str("date")) < 0)) best = a;
+            }
+            if (best == null && !staff.isEmpty()) {
+                Calendar d = Calendar.getInstance();
+                SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT);
+                for (int i = 0; i < 8 && best == null; i++) {
+                    for (Fb.Doc a : Fb.appointments(c, f.format(d.getTime()), staff)) {
+                        if (!k.equals(key(a.str("phone")))) continue;
+                        if (a.str("confirmRequestedAt").isEmpty() || !a.str("replyAt").isEmpty()) continue;
+                        best = a;
+                        break;
+                    }
+                    d.add(Calendar.DAY_OF_MONTH, 1);
+                }
             }
             String id = best == null ? null : best.id;
             String client = best == null ? "" : best.str("client");
@@ -290,10 +303,19 @@ public class Sender {
                     p.edit().putString("pending", pending.toString()).apply();
                 }
             }
+            if (id == null) {
+                // keep it and try again later (e.g. after the appointment is saved again)
+                JSONObject un = new JSONObject(p.getString("unmatched", "{}"));
+                boolean first = !un.has(msgId);
+                un.put(msgId, new JSONObject().put("from", from).put("body", body).put("when", when));
+                p.edit().putString("unmatched", un.toString()).apply();
+                return first ? "Răspuns „" + body.trim() + "” de la …" + k.substring(Math.max(0, k.length() - 4)) + ": nu am găsit încă programarea; reîncerc automat." : null;
+            }
             seen.put(msgId, today);
             if (seen.length() > 300) seen = new JSONObject();
-            p.edit().putString("seenReplies", seen.toString()).apply();
-            if (id == null) return "Răspuns „" + body.trim() + "” de la …" + k.substring(Math.max(0, k.length() - 4)) + ": nu am găsit programare care așteaptă răspuns.";
+            JSONObject un = new JSONObject(p.getString("unmatched", "{}"));
+            un.remove(msgId);
+            p.edit().putString("seenReplies2", seen.toString()).putString("unmatched", un.toString()).apply();
 
             Map<String, String> upd = new HashMap<>();
             upd.put("status", status);
@@ -306,11 +328,33 @@ public class Sender {
         }
     }
 
+    /** Tries again the replies that had no matching appointment (kept up to 3 days). */
+    static void retryUnmatched(Context c) {
+        try {
+            JSONObject un = new JSONObject(prefs(c).getString("unmatched", "{}"));
+            long limit = System.currentTimeMillis() - 3L * 24 * 3600 * 1000;
+            List<String> ids = new ArrayList<>();
+            for (Iterator<String> it = un.keys(); it.hasNext(); ) ids.add(it.next());
+            for (String id : ids) {
+                JSONObject m = un.getJSONObject(id);
+                if (m.optLong("when") < limit) {
+                    JSONObject cur = new JSONObject(prefs(c).getString("unmatched", "{}"));
+                    cur.remove(id);
+                    prefs(c).edit().putString("unmatched", cur.toString()).apply();
+                    continue;
+                }
+                log(c, handleReply(c, m.getString("from"), m.getString("body"), m.optLong("when")));
+            }
+        } catch (Exception ignored) { }
+    }
+
     /** Safety net: reads 1/0 replies from the SMS inbox in case the live receiver was blocked by the phone. */
     public static void scanInbox(Context c) {
         if (c.checkSelfPermission(android.Manifest.permission.READ_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
         if (!Fb.isSignedIn(c)) return;
         SharedPreferences p = prefs(c);
+        retryUnmatched(c);
+        if (!p.getBoolean("rescan107", false)) p.edit().putBoolean("rescan107", true).remove("inboxSince").apply();
         long since = p.getLong("inboxSince", System.currentTimeMillis() - 3L * 24 * 3600 * 1000);
         long max = since;
         try (android.database.Cursor cur = c.getContentResolver().query(android.provider.Telephony.Sms.Inbox.CONTENT_URI,
