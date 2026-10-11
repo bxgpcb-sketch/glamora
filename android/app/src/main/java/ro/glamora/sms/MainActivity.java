@@ -52,8 +52,30 @@ public class MainActivity extends Activity {
         root.setPadding(p, dp(28), p, dp(28));
         sv.addView(root);
         setContentView(sv);
-        ReminderJob.schedule(this);
-        render();
+        String crash = Fb.prefs(this).getString("crash", "");
+        if (!crash.isEmpty()) { showCrash(crash); return; }
+        try { ReminderJob.schedule(this); } catch (Throwable t) { Sender.log(this, "Programarea verificării orare a eșuat: " + t); }
+        try { render(); } catch (Throwable t) { showCrash(stack(t)); }
+    }
+
+    static String stack(Throwable t) {
+        java.io.StringWriter sw = new java.io.StringWriter();
+        t.printStackTrace(new java.io.PrintWriter(sw));
+        return "Android " + android.os.Build.VERSION.RELEASE + " (API " + android.os.Build.VERSION.SDK_INT + ") · "
+                + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + "\n" + sw;
+    }
+
+    void showCrash(String info) {
+        root.removeAllViews();
+        root.addView(text("Glamora SMS s-a oprit", 22, BAD, true));
+        root.addView(text("Fă o captură de ecran și trimite-o. Apoi apasă „Încearcă din nou”.", 15, INK, false));
+        Button again = button("Încearcă din nou", true);
+        again.setOnClickListener(v -> { Fb.prefs(this).edit().remove("crash").commit(); recreate(); });
+        root.addView(again);
+        TextView t = text(info, 11, INK, false);
+        t.setTextIsSelectable(true);
+        t.setPadding(0, dp(16), 0, 0);
+        root.addView(t);
     }
 
     @Override
