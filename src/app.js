@@ -80,7 +80,7 @@ function renderGrid(){
     for(const a of S.appts.filter(a=>a.staff===st.id)){const top=(toMin(a.start)-start)*k+1,h=Math.max(STEP*k-2,(a.dur||30)*k-2);
       const blk=isBlock(a.service);
       c+=`<button class="appt${blk?" block":""}" data-id="${esc(a.id)}" style="top:${top}px;height:${h}px;border-left-color:${st.color}">
-        <span class="t">${esc(a.start)}–${toTime(toMin(a.start)+(a.dur||30))}${!blk&&(a.remindedAt||a.confirmSentAt)?" · ✓":""}</span><span class="c">${esc(blk?(a.service+(a.client?" · "+a.client:"")):(a.client||"Fără nume"))}</span>${!blk&&h>60&&a.service?`<span class="s">${esc(a.service)}</span>`:""}</button>`}
+        <span class="t">${esc(a.start)} · ${durLabel(a.dur||30)}${!blk&&(a.remindedAt||a.confirmSentAt)?" · ✓":""}</span><span class="c">${esc(blk?(a.service||"Ocupat"):(a.client||"Fără nume"))}</span>${blk?(a.client?`<span class="s">${esc(a.client)}</span>`:""):(a.service?`<span class="s">${esc(a.service)}</span>`:"")}</button>`}
     html+=c+`</div>`}
   const g=$("#grid");g.innerHTML=html;
   g.querySelectorAll(".slot").forEach(b=>b.onclick=()=>openAppt(null,{staff:b.parentElement.dataset.staff,start:b.dataset.t}));
