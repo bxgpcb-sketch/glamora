@@ -117,6 +117,7 @@ $("#menuBtn").onclick=()=>{const dr=$("#drawer");
     <button class="item" id="mRem">${ICON.sms}Reamintiri pentru mâine</button>
     <button class="item" id="mClients">${ICON.user}Caută clientă</button>
     <button class="item" id="mAcc">${ICON.user}Detalii cont</button>
+    ${/android/i.test(navigator.userAgent)?`<a class="item" href="./glamora-sms.apk" download="glamora-sms.apk" style="display:flex;align-items:center;gap:12px;min-height:52px;padding:0 10px;border-radius:12px;font-size:16px;font-weight:600">${ICON.sms}Descarcă Glamora SMS</a>`:""}
     <span style="flex:1"></span>
     <button class="item danger-item" id="mOut">${ICON.out}Deconectare</button>
     <button class="btn" id="mClose">Închide</button></nav>`;
