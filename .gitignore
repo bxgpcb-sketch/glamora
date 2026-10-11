@@ -3,3 +3,7 @@ dist/
 src/app-orig.js
 src/app-body.js
 src/markup.html
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties

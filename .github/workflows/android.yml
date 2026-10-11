@@ -1,0 +1,55 @@
+name: Glamora SMS (Android)
+
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build APK
+        id: build
+        run: |
+          cd android
+          gradle assembleRelease --no-daemon --console=plain 2>&1 | tee ../build.log
+
+      - name: Publish APK to the 'apk' branch
+        if: success()
+        run: |
+          mkdir -p out && cp android/app/build/outputs/apk/release/app-release.apk out/glamora-sms.apk
+          cd out
+          echo "Versiune: 1.0.${GITHUB_RUN_NUMBER} · $(date -u +'%Y-%m-%d %H:%M') UTC" > VERSIUNE.txt
+          git init -q -b apk
+          git config user.name "Glamora CI"
+          git config user.email "ci@glamora.local"
+          git add -A && git commit -qm "APK 1.0.${GITHUB_RUN_NUMBER}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" apk
+
+      - name: Save build log to the 'ci-log' branch
+        if: always()
+        run: |
+          mkdir -p logout && cp build.log logout/ 2>/dev/null || echo "no log" > logout/build.log
+          echo "run=${GITHUB_RUN_NUMBER} sha=${GITHUB_SHA} result=${{ steps.build.outcome }}" > logout/status.txt
+          cd logout
+          git init -q -b ci-log
+          git config user.name "Glamora CI"
+          git config user.email "ci@glamora.local"
+          git add -A && git commit -qm "log ${GITHUB_RUN_NUMBER}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ci-log
