@@ -41,8 +41,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
-        getWindow().setStatusBarColor(PINK);
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+        try {
+            getWindow().setStatusBarColor(PINK);
+            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+        } catch (Throwable ignored) { }
         ScrollView sv = new ScrollView(this);
         sv.setBackgroundColor(PINK);
         sv.setFitsSystemWindows(true);
