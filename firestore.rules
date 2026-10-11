@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Doar conturile create de administrator (Tina, Mymy, Irina) pot citi și scrie.
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

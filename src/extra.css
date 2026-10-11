@@ -1,0 +1,24 @@
+/* standalone app additions */
+html,body{margin:0}
+[hidden]{display:none!important}
+.app{padding-top:env(safe-area-inset-top,0px)}
+.who{display:flex;flex-direction:column;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:0 0 10px}
+.who span{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.drawer .danger-item{color:var(--bad)}
+.drawer .danger-item svg{color:var(--bad)!important}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line-soft)}
+.kv span{color:var(--muted)}
+.kv b{text-align:right;overflow-wrap:anywhere}
+.who-pick{flex-direction:column;align-items:flex-start;min-height:60px;padding:8px 14px;text-align:left}
+.who-pick span{font-weight:500;font-size:13px;color:var(--muted)}
+/* login */
+.login{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:calc(env(safe-area-inset-top,0px) + 16px) 16px calc(env(safe-area-inset-bottom,0px) + 16px);background:var(--bg);overflow:auto}
+.login .card{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:28px 20px 22px;box-shadow:0 12px 40px rgba(90,30,55,.12)}
+.brandmark{font-family:"Bodoni Moda",Georgia,serif;font-weight:700;font-size:44px;letter-spacing:.01em;color:var(--accent);text-align:center;line-height:1}
+.brandsub{text-align:center;color:var(--muted);font-size:13px;letter-spacing:.14em;text-transform:uppercase;margin:8px 0 24px}
+.login .cform .field input{min-height:50px}
+.pw{position:relative}
+.pw button{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:var(--accent);font-weight:600;font-size:14px;padding:8px}
+.pw input{padding-right:84px!important}
+.linkbtn{border:0;background:transparent;color:var(--accent);font-weight:600;font-size:14px;padding:10px;margin:4px auto 0;display:block}
+.splash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg)}
