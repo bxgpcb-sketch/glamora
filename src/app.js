@@ -35,6 +35,9 @@ function splitClient(v){v=String(v||"").trim();const m=v.match(/^(.*?)[\s,;-]*((
 function isBlock(name){const n=String(name||"").trim().toLowerCase();return S.services.some(s=>s.block&&s.name.toLowerCase()===n)||n==="pauză"||n==="pauza"||n==="ocupat"}
 function clientLine(a){return a.phone?`${a.client} ${a.phone}`:(a.client||"")}
 function intl(phone){let d=digits(phone);if(String(phone).trim().startsWith("+"))return d;if(d.startsWith("00"))return d.slice(2);if(d.startsWith("0"))return "40"+d.slice(1);return d}
+const STATUSES=[["acceptata","Acceptată"],["confirmata","Confirmată"],["anulata","Anulată"]];
+function statusLabel(k){return (STATUSES.find(x=>x[0]===k)||STATUSES[0])[1]}
+function detailed(a){return `Bună ziua${a.client?", "+a.client:""}! Vă reamintim programarea la Salon Vintage ${fmtDate(a.date)}, ora ${a.start}, la ${staffName(a.staff)}${a.service?" ("+a.service+")":""}. Răspundeți cu 1 pentru confirmare sau 0 pentru anulare. Mulțumim!`}
 function reminder(a){return `Bună ziua${a.client?", "+a.client:""}! Vă reamintim programarea la Salon Vintage ${fmtDate(a.date)}, ora ${a.start}, la ${staffName(a.staff)}${a.service?" ("+a.service+")":""}. Vă așteptăm!`}
 function durOptions(sel){const list=DURS.includes(Number(sel))?DURS:[...DURS,Number(sel)].sort((a,b)=>a-b);return list.map(d=>`<option value="${d}" ${d===Number(sel)?"selected":""}>${durLabel(d)}</option>`).join("")}
 async function copyText(t){try{await navigator.clipboard.writeText(t);toast("Text copiat")}catch(e){toast("Nu s-a putut copia")}}
@@ -79,8 +82,9 @@ function renderGrid(){
     if(S.date===todayStr()&&nowM>=start&&nowM<=end)c+=`<div class="now" style="top:${(nowM-start)*k}px"></div>`;
     for(const a of S.appts.filter(a=>a.staff===st.id)){const top=(toMin(a.start)-start)*k+1,h=Math.max(STEP*k-2,(a.dur||30)*k-2);
       const blk=isBlock(a.service);
-      c+=`<button class="appt${blk?" block":""}" data-id="${esc(a.id)}" style="top:${top}px;height:${h}px;border-left-color:${st.color}">
-        <span class="t">${esc(a.start)} · ${durLabel(a.dur||30)}${!blk&&(a.remindedAt||a.confirmSentAt)?" · ✓":""}</span><span class="c">${esc(blk?(a.service||"Ocupat"):(a.client||"Fără nume"))}</span>${blk?(a.client?`<span class="s">${esc(a.client)}</span>`:""):(a.service?`<span class="s">${esc(a.service)}</span>`:"")}</button>`}
+      const st2=blk?"":(a.status&&a.status!=="acceptata"?" st-"+a.status:"");
+      c+=`<button class="appt${blk?" block":""}${st2}" data-id="${esc(a.id)}" style="top:${top}px;height:${h}px;border-left-color:${st.color}">
+        <span class="t">${esc(a.start)} · ${durLabel(a.dur||30)}${!blk&&a.status==="confirmata"?" · ✓ Confirmată":""}${!blk&&a.status==="anulata"?" · ✕ Anulată":""}${!blk&&a.status!=="confirmata"&&a.status!=="anulata"&&a.confirmRequestedAt?" · ⏳":""}</span><span class="c">${esc(blk?(a.service||"Ocupat"):(a.client||"Fără nume"))}</span>${blk?(a.client?`<span class="s">${esc(a.client)}</span>`:""):(a.service?`<span class="s">${esc(a.service)}</span>`:"")}</button>`}
     html+=c+`</div>`}
   const g=$("#grid");g.innerHTML=html;
   g.querySelectorAll(".slot").forEach(b=>b.onclick=()=>openAppt(null,{staff:b.parentElement.dataset.staff,start:b.dataset.t}));
@@ -138,8 +142,7 @@ function openAppt(a,pre){
   let staff=a.staff,date=a.date;
   const m=$("#modal");
   m.innerHTML=`<div class="sheet compact" role="dialog" aria-modal="true" aria-labelledby="mTitle">
-    <div class="sheet-head"><div style="flex:1;min-width:0"><h2 id="mTitle">${isNew?"Programare nouă":"Programare"}</h2><span class="okline">✓ Acceptată</span></div>
-      <div class="hicons" id="contact"><a class="call" id="cCall" href="#" aria-label="Sună">${ICON.call}</a><a class="sms" id="cSms" href="#" aria-label="SMS">${ICON.sms}</a><a class="wa" id="cWa" href="#" target="_blank" rel="noopener" aria-label="WhatsApp">${ICON.wa}</a></div>
+    <div class="sheet-head"><h2 id="mTitle">${isNew?"Programare nouă":"Programare"}</h2>
       <button type="button" class="btn ghost icon" id="xBtn" aria-label="Închide">✕</button></div>
     <div class="sheet-body">
     <form class="cform" id="apForm" autocomplete="off">
@@ -150,9 +153,11 @@ function openAppt(a,pre){
       </div>
       <div class="field"><span class="lbl">Lucrătoare</span><div class="staffpick" id="fStaff">${STAFF.map(s=>`<button type="button" data-id="${s.id}" aria-pressed="${s.id===staff}" style="border-bottom-color:${s.color}">${s.name}</button>`).join("")}</div></div>
       <div class="field"><span class="lbl">Serviciu</span><button type="button" class="pick" id="fSvc"></button></div>
+      <div class="field"><span class="lbl">Status</span><div class="stpick" id="fStatus">${STATUSES.map(([k,l])=>`<button type="button" class="st-${k}" data-s="${k}" aria-pressed="${k===(a.status||"acceptata")}">${l}</button>`).join("")}</div></div>
       <div class="field"><label for="fClient">Clientă și telefon</label>
         <div style="position:relative" id="cliField"><input id="fClient" value="${esc(clientLine(a))}" placeholder="Ex: Maria Pop 0744 123 456" autocapitalize="words" role="combobox" aria-expanded="false" aria-controls="cliList">
-        <div class="combo-list up" id="cliList" hidden></div></div></div>
+        <div class="combo-list up" id="cliList" hidden></div></div>
+        <div class="crow" id="contact"><a class="call" id="cCall" href="#">${ICON.call}Sună</a><a class="sms" id="cSms" href="#">${ICON.sms}SMS</a><a class="smsd" id="cSmsD" href="#">${ICON.sms}SMS detaliat</a><a class="wa" id="cWa" href="#" target="_blank" rel="noopener">${ICON.wa}WhatsApp</a></div></div>
       <div class="field"><label for="fNote">Notițe</label><input id="fNote" value="${esc(a.note)}" placeholder="Opțional"></div>
       <div class="warn" id="fWarn" hidden></div>
     </form>
@@ -185,6 +190,7 @@ function openAppt(a,pre){
     const msg=reminder({client:c.name,date:c.date,start:c.start,staff:c.staff,service:c.service});
     f("#cCall").href="tel:"+digits(c.phone);
     f("#cSms").href="sms:"+digits(c.phone)+"?&body="+encodeURIComponent(msg);
+    f("#cSmsD").href="sms:"+digits(c.phone)+"?&body="+encodeURIComponent(detailed({client:c.name,date:c.date,start:c.start,staff:c.staff,service:c.service}));
     f("#cWa").href="https://wa.me/"+intl(c.phone)+"?text="+encodeURIComponent(msg)};
   f("#fClient").addEventListener("input",updContact);f("#fStart").addEventListener("change",updContact);
 
@@ -199,9 +205,18 @@ function openAppt(a,pre){
   cliIn.addEventListener("input",drawCli);
   m.onpointerdown=e=>{const c=f("#cliField");if(c&&!c.contains(e.target))closeCli()};
 
+  /* status */
+  let status=a.status||"acceptata";
+  f("#fStatus").querySelectorAll("button").forEach(b=>b.onclick=()=>{status=b.dataset.s;f("#fStatus").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b))});
+  /* remember what was sent (existing appointments only) */
+  if(!isNew){const now=()=>new Date().toISOString(),ref=()=>S.db.collection("appointments").doc(a.id);
+    f("#cSms").addEventListener("click",()=>ref().update({remindedAt:now(),remindedVia:"sms"}).catch(()=>{}));
+    f("#cSmsD").addEventListener("click",()=>ref().update({confirmRequestedAt:now(),confirmRequestedVia:"manual"}).catch(()=>{}));
+    f("#cWa").addEventListener("click",()=>ref().update({remindedAt:now(),remindedVia:"wa"}).catch(()=>{}));}
+
   /* overlap check */
   const check=()=>{const s=toMin(f("#fStart").value),e=s+(Number(f("#fDur").value)||30);
-    const clash=(date===S.date?S.appts:[]).find(x=>x.id!==a.id&&x.staff===staff&&toMin(x.start)<e&&toMin(x.start)+(x.dur||30)>s);
+    const clash=(date===S.date?S.appts:[]).find(x=>x.id!==a.id&&x.staff===staff&&x.status!=="anulata"&&toMin(x.start)<e&&toMin(x.start)+(x.dur||30)>s);
     const w=f("#fWarn");w.hidden=!clash;if(clash)w.textContent=`Se suprapune cu ${clash.client} (${clash.start}) la ${staffName(staff)}.`};
   ["#fStart","#fDur"].forEach(id=>f(id).addEventListener("change",check));check();updContact();
 
@@ -213,9 +228,9 @@ function openAppt(a,pre){
     if(!cp.name&&!isBlock(svcIn.value)){f("#fClient").focus();toast("Scrie numele clientei");return}
     const now=new Date().toISOString();
     const data={date,staff,start:f("#fStart").value,dur:Number(f("#fDur").value)||30,
-      client:cp.name,phone:cp.phone,service:svcIn.value.trim(),status:"acceptata",note:f("#fNote").value.trim(),updatedAt:now,createdAt:a.createdAt||now};
+      client:cp.name,phone:cp.phone,service:svcIn.value.trim(),status,note:f("#fNote").value.trim(),updatedAt:now,createdAt:a.createdAt||now};
     f("#saveBtn").disabled=true;
-    try{let id=a.id;if(isNew)id=(await S.db.collection("appointments").add(data)).id;else await S.db.collection("appointments").doc(a.id).set(data);
+    try{let id=a.id;if(isNew)id=(await S.db.collection("appointments").add(data)).id;else{const {id:_omit,...prev}=a;await S.db.collection("appointments").doc(a.id).set({...prev,...data})}
       await saveClient(data).catch(()=>{});if(data.date!==S.date)goDate(data.date);
       if(isNew&&digits(data.phone).length>=6&&!isBlock(data.service)){showAccepted(id,data);return}
       close();toast("Programare salvată")}
@@ -296,7 +311,7 @@ function openReminders(day){
   m.hidden=false;lockScroll(true);
   const close=()=>{if(unsub)unsub();m.hidden=true;m.innerHTML="";lockScroll(false)};
   $("#xBtn").onclick=close;
-  const mark=async(id,via)=>{try{await S.db.collection("appointments").doc(id).update({remindedAt:new Date().toISOString(),remindedVia:via})}catch(e){}};
+  const mark=async(id,via)=>{const t=new Date().toISOString();try{await S.db.collection("appointments").doc(id).update(via==="smsd"?{remindedAt:t,remindedVia:"sms",confirmRequestedAt:t,confirmRequestedVia:"manual"}:{remindedAt:t,remindedVia:via})}catch(e){}};
   const draw=()=>{const el=$("#rList");if(!el)return;
     const list=rows.filter(a=>!isBlock(a.service)).sort((x,y)=>x.start.localeCompare(y.start));
     const withPhone=list.filter(a=>digits(a.phone).length>=6),sent=withPhone.filter(a=>a.remindedAt).length;
@@ -304,8 +319,8 @@ function openReminders(day){
     if(!list.length){el.innerHTML=`<div class="empty">Nu sunt programări în ziua aceasta.</div>`;return}
     el.innerHTML=list.map(a=>{const ok=digits(a.phone).length>=6,msg=reminder(a);
       return `<div class="row"><div class="main"><b>${esc(a.client||"Fără nume")}</b><span class="sub"><span class="num">${esc(a.start)}</span> · ${esc(staffName(a.staff))}${a.service?" · "+esc(a.service):""}</span>
-        <span class="sub" style="display:block;color:${a.remindedAt?"var(--ok)":"var(--muted)"}">${a.remindedAt?"✓ Trimis "+(a.remindedVia==="wa"?"pe WhatsApp":"prin SMS"):ok?esc(a.phone):"Fără număr de telefon"}</span></div>
-        ${ok?`<div class="mini"><a class="sms" style="color:var(--accent)" href="sms:${esc(digits(a.phone))}?&body=${encodeURIComponent(msg)}" data-id="${esc(a.id)}" data-via="sms" aria-label="Trimite SMS">${ICON.sms}</a><a class="wa" href="https://wa.me/${esc(intl(a.phone))}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener" data-id="${esc(a.id)}" data-via="wa" aria-label="Trimite pe WhatsApp">${ICON.wa}</a></div>`:""}</div>`}).join("");
+        <span class="sub" style="display:block;color:${a.status==="confirmata"?"var(--ok)":a.status==="anulata"?"var(--bad)":a.remindedAt?"var(--ok)":"var(--muted)"}">${a.status==="confirmata"?"✓ Confirmată de clientă":a.status==="anulata"?"✕ Anulată de clientă":a.confirmRequestedAt?"⏳ Așteaptă răspuns 1/0"+(a.confirmRequestedVia==="auto"?" (trimis automat)":""):a.remindedAt?"✓ Trimis "+(a.remindedVia==="wa"?"pe WhatsApp":"prin SMS"):ok?esc(a.phone):"Fără număr de telefon"}</span></div>
+        ${ok?`<div class="mini"><a class="sms" style="color:var(--accent)" href="sms:${esc(digits(a.phone))}?&body=${encodeURIComponent(msg)}" data-id="${esc(a.id)}" data-via="sms" aria-label="Trimite SMS">${ICON.sms}</a><a class="smsd" style="color:#fff;background:var(--accent);border-color:var(--accent);font-weight:700;font-size:11px;width:auto;padding:0 8px" href="sms:${esc(digits(a.phone))}?&body=${encodeURIComponent(detailed(a))}" data-id="${esc(a.id)}" data-via="smsd" aria-label="Trimite SMS detaliat">1/0</a><a class="wa" href="https://wa.me/${esc(intl(a.phone))}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener" data-id="${esc(a.id)}" data-via="wa" aria-label="Trimite pe WhatsApp">${ICON.wa}</a></div>`:""}</div>`}).join("");
     el.querySelectorAll("[data-via]").forEach(l=>l.addEventListener("click",()=>mark(l.dataset.id,l.dataset.via)))};
   const load=()=>{$("#rDate").textContent=relDay(day)+" · "+fmtDate(day,{weekday:"long",day:"numeric",month:"long"});
     if(unsub)unsub();rows=[];$("#rList").innerHTML=`<div class="empty">Se încarcă…</div>`;
