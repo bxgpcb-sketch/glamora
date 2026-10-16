@@ -163,6 +163,9 @@ a{color:inherit;text-decoration:none}
 .tog small{color:var(--muted);font-size:13px}
 .smslog{white-space:pre-wrap;font-family:var(--f-mono);font-size:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:240px;overflow:auto;margin:8px 0 0}
 
+.notice.upd{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--accent-soft);color:var(--fg);font-weight:600}
+.notice.upd .btn{min-height:40px;flex:none}
+
 /* calendar */
 .cal{padding:12px 14px 16px}
 .cal-head{display:flex;align-items:center;gap:6px;margin-bottom:8px}
@@ -251,6 +254,7 @@ html,body{margin:0}
     <button class="btn icon" id="menuBtn" aria-label="Meniu"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
   </div>
   <div id="dbNotice" class="notice" hidden>Ești offline. Modificările se salvează automat când revine internetul.</div>
+  <div id="updBanner" class="notice upd" hidden><span id="updText"></span><button class="btn primary" id="updBtn">Actualizează</button></div>
   <div class="addrow"><button class="btn primary" id="newBtn">+ Programare nouă</button></div>
   <div class="scroller" id="scroller"><div class="grid" id="grid"></div></div>
 </div>
@@ -261,6 +265,6 @@ html,body{margin:0}
 <div id="toast" class="toast" hidden></div>
 
 
-<script type="module" src="./app.js?v=1792152280"></script>
+<script type="module" src="./app.js?v=1792152737"></script>
 </body>
 </html>
