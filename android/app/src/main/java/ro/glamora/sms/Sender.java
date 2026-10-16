@@ -276,9 +276,9 @@ public class Sender {
             if (status == null || !Fb.isSignedIn(c)) return null;
             SharedPreferences p = prefs(c);
             String k = key(from);
-            String msgId = k + "|" + plain(body).trim().toLowerCase(Locale.ROOT) + "|" + new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new java.util.Date(when));
-            JSONObject seen = new JSONObject(p.getString("seenReplies2", "{}"));
-            if (seen.has(msgId)) return null;
+            String msgId = k + "|" + plain(body).trim().toLowerCase(Locale.ROOT);
+            JSONObject seen = new JSONObject(p.getString("seenReplies3", "{}"));
+            if (isDuplicate(seen, msgId, when)) return null; // same message seen by another path (SMS / inbox / notification)
 
             String today = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new java.util.Date());
             String staff = p.getString("staff", "");
@@ -318,16 +318,17 @@ public class Sender {
             if (id == null) {
                 // keep it and try again later (e.g. after the appointment is saved again)
                 JSONObject un = new JSONObject(p.getString("unmatched", "{}"));
-                boolean first = !un.has(msgId);
-                un.put(msgId, new JSONObject().put("from", from).put("body", body).put("when", when));
+                String uk = msgId + "@" + (when / 600000L);
+                boolean first = !un.has(uk);
+                un.put(uk, new JSONObject().put("from", from).put("body", body).put("when", when));
                 p.edit().putString("unmatched", un.toString()).apply();
                 return first ? "Răspuns „" + body.trim() + "” de la …" + k.substring(Math.max(0, k.length() - 4)) + ": nu am găsit încă programarea; reîncerc automat." : null;
             }
-            seen.put(msgId, today);
+            seen.put(msgId, when);
             if (seen.length() > 300) seen = new JSONObject();
             JSONObject un = new JSONObject(p.getString("unmatched", "{}"));
-            un.remove(msgId);
-            p.edit().putString("seenReplies2", seen.toString()).putString("unmatched", un.toString()).apply();
+            un.remove(msgId + "@" + (when / 600000L));
+            p.edit().putString("seenReplies3", seen.toString()).putString("unmatched", un.toString()).apply();
 
             Map<String, String> upd = new HashMap<>();
             upd.put("status", status);
@@ -338,6 +339,12 @@ public class Sender {
         } catch (Exception e) {
             return "Eroare la răspuns: " + e.getMessage();
         }
+    }
+
+    /** The same reply can reach us 2-3 times (SMS, inbox, notification) within minutes; a later "1" is a new answer. */
+    static boolean isDuplicate(JSONObject seen, String id, long when) {
+        long prev = seen.optLong(id, 0);
+        return prev != 0 && Math.abs(when - prev) < 10L * 60 * 1000;
     }
 
     static String fold(String s) { return plain(s).toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9 ]", " ").replaceAll("\\s+", " ").trim(); }
@@ -356,9 +363,9 @@ public class Sender {
             SharedPreferences p = prefs(c);
             String name = fold(s);
             if (name.isEmpty()) return null;
-            String msgId = "n:" + name + "|" + plain(body).trim().toLowerCase(Locale.ROOT) + "|" + new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new java.util.Date(when));
-            JSONObject seen = new JSONObject(p.getString("seenReplies2", "{}"));
-            if (seen.has(msgId)) return null;
+            String msgId = "n:" + name + "|" + plain(body).trim().toLowerCase(Locale.ROOT);
+            JSONObject seen = new JSONObject(p.getString("seenReplies3", "{}"));
+            if (isDuplicate(seen, msgId, when)) return null;
             String staff = p.getString("staff", "");
             if (staff.isEmpty()) staff = loadStaff(c);
             if (staff.isEmpty()) return null;
@@ -382,8 +389,8 @@ public class Sender {
             upd.put("replyText", body.trim());
             upd.put("replyAt", iso());
             Fb.update(c, "appointments/" + a.id, upd);
-            seen.put(msgId, f.format(new java.util.Date()));
-            p.edit().putString("seenReplies2", seen.toString()).apply();
+            seen.put(msgId, when);
+            p.edit().putString("seenReplies3", seen.toString()).apply();
             return (status.equals("confirmata") ? "✓ Confirmat (chat): " : "✕ Anulat (chat): ") + a.str("client") + " (" + a.str("date") + ")";
         } catch (Exception e) {
             return "Eroare la răspuns din chat: " + e.getMessage();
