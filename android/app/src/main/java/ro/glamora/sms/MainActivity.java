@@ -68,6 +68,9 @@ public class MainActivity extends Activity {
             Updater.check(getApplicationContext());
             runOnUiThread(() -> web.evaluateJavascript("window.glamoraUpdate&&window.glamoraUpdate()", null));
         }).start();
+        if (chatAccess()) {
+            try { android.service.notification.NotificationListenerService.requestRebind(new android.content.ComponentName(this, ReplyListener.class)); } catch (Exception ignored) { }
+        }
         try { ReminderJob.schedule(this); } catch (Throwable t) { Sender.log(this, "Programarea verificării a eșuat: " + t); }
         if (!smsOk()) requestSms();
     }

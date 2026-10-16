@@ -351,7 +351,8 @@ public class Sender {
             String s = sender.startsWith("tel:") ? sender.substring(4) : sender;
             if (digits(s).length() >= 9) return handleReply(c, s, body, when);
             String status = replyStatus(body);
-            if (status == null || !Fb.isSignedIn(c)) return null;
+            if (status == null) return null;
+            if (!Fb.isSignedIn(c)) return "Răspuns primit, dar aplicația nu e conectată pentru SMS: ieși din cont și intră din nou.";
             SharedPreferences p = prefs(c);
             String name = fold(s);
             if (name.isEmpty()) return null;
