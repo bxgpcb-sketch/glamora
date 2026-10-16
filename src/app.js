@@ -139,14 +139,22 @@ async function dataError(e,what){
 function centerMyColumn(){const i=STAFF.findIndex(x=>x.id===S.profile?.staff);if(i<0)return;
   const sc=$("#scroller");if(!sc)return;const cw=sc.scrollWidth/STAFF.length;
   sc.scrollLeft=Math.max(0,Math.min(sc.scrollWidth-sc.clientWidth,i*cw+cw/2-sc.clientWidth/2))}
+/* Programările se țin în memorie pentru o fereastră de zile (3 în urmă, 10 înainte),
+   ca trecerea de la o zi la alta să fie instantă. Fereastra se mută când te apropii de margine. */
+const WIN_BACK=3,WIN_FWD=10;
+function showDay(){S.appts=(S.allAppts||[]).filter(a=>a.date===S.date);renderGrid()}
 function subscribeDay(){
+  const c=S.date,from=shiftDate(c,-WIN_BACK),to=shiftDate(c,WIN_FWD);
   if(S.unsubAppts){S.unsubAppts();S.unsubAppts=null}
-  S.appts=[];S.needScroll=true;renderGrid();if(!S.db)return;
-  S.unsubAppts=S.db.collection("appointments").where("date","==",S.date).onSnapshot(snap=>{
-    S.appts=snap.docs.map(d=>({id:d.id,...d.data()}));renderGrid();
-    if(APP&&S.profile?.staff)S.appts.filter(x=>x.needsConfirm===S.profile.staff).forEach(x=>{try{APP.newAppointment(x.id)}catch(e){}})},e=>dataError(e,"Agenda"));
+  S.win={from,to};S.needScroll=true;showDay();if(!S.db)return;
+  S.unsubAppts=S.db.collection("appointments").where("date",">=",from).where("date","<=",to).onSnapshot(snap=>{
+    S.allAppts=snap.docs.map(d=>({id:d.id,...d.data()}));showDay();
+    if(APP&&S.profile?.staff)S.allAppts.filter(x=>x.needsConfirm===S.profile.staff).forEach(x=>{try{APP.newAppointment(x.id)}catch(e){}})},e=>dataError(e,"Agenda"));
 }
-function goDate(d){S.date=d;subscribeDay()}
+function goDate(d){S.date=d;
+  const w=S.win;
+  if(S.db&&w&&d>=shiftDate(w.from,1)&&d<=shiftDate(w.to,-2)){S.needScroll=true;showDay();return} // already loaded: instant
+  subscribeDay()}
 $("#prevDay").onclick=()=>goDate(shiftDate(S.date,-1));
 $("#nextDay").onclick=()=>goDate(shiftDate(S.date,1));
 $("#dateBtn").onclick=()=>openCalendar(S.date,goDate);
@@ -530,7 +538,7 @@ $("#lForgot").onclick=async()=>{const em=$("#lEmail").value.trim(),err=$("#lErr"
 
 /* ---------- data ---------- */
 const subs=[];
-function stopData(){while(subs.length)subs.pop()();if(S.unsubAppts){S.unsubAppts();S.unsubAppts=null}S.db=null;S.appts=[];S.clients=[]}
+function stopData(){while(subs.length)subs.pop()();if(S.unsubAppts){S.unsubAppts();S.unsubAppts=null}S.db=null;S.appts=[];S.allAppts=[];S.win=null;S.clients=[]}
 let seeded=false;
 function startData(){
   S.db=db;
