@@ -51,6 +51,21 @@ public class Updater {
 
     public static boolean updateAvailable(Context c) { return Fb.prefs(c).getInt("latestCode", 0) > currentCode(c); }
 
+    /** Downloads the newer APK into the cache. Returns null when ready, otherwise a message. */
+    public static synchronized String prepare(Context c) {
+        try {
+            JSONObject v = check(c);
+            if (v == null) return "Nu pot verifica actualizarea (internet?).";
+            int code = v.getInt("versionCode");
+            if (code <= currentCode(c)) return "Ai ultima versiune (" + currentName(c) + ").";
+            if (!canInstall(c)) return "Permite mai întâi „Instalare aplicații necunoscute” pentru Glamora.";
+            download(BASE + v.optString("apk", "glamora.apk") + "?v=" + code, new File(c.getCacheDir(), "update.apk"));
+            return null;
+        } catch (Exception e) {
+            return "Descărcarea nu a mers: " + e.getMessage();
+        }
+    }
+
     /** Called when the colleague taps "Actualizează": download, then Android asks her to confirm. */
     public static synchronized String downloadAndAsk(Context c) {
         try {

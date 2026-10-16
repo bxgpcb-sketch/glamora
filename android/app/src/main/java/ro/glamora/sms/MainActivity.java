@@ -209,14 +209,32 @@ public class MainActivity extends Activity {
             });
         }
 
-        /** The colleague tapped "Actualizează": download and let Android ask for confirmation. */
+        /** The colleague tapped "Actualizează": download, then open Android's installer to confirm. */
         @JavascriptInterface
         public void installUpdate() {
             new Thread(() -> {
-                String r = Updater.downloadAndAsk(MainActivity.this);
-                Sender.log(MainActivity.this, r);
-                runOnUiThread(() -> web.evaluateJavascript("window.glamoraUpdateResult&&window.glamoraUpdateResult(" + JSONObject.quote(r) + ")", null));
+                String err = Updater.prepare(MainActivity.this);
+                if (err != null) { report(err); return; }
+                runOnUiThread(() -> {
+                    try {
+                        Intent i = new Intent(Intent.ACTION_VIEW);
+                        i.setDataAndType(ApkProvider.URI, "application/vnd.android.package-archive");
+                        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        startActivity(i);
+                        report("Confirmă instalarea pe ecranul care s-a deschis.");
+                    } catch (Exception e) {
+                        new Thread(() -> {
+                            try { Updater.install(MainActivity.this, new java.io.File(getCacheDir(), "update.apk")); report("Confirmă instalarea."); }
+                            catch (Exception x) { report("Instalarea nu a pornit: " + x.getMessage()); }
+                        }).start();
+                    }
+                });
             }).start();
+        }
+
+        void report(String r) {
+            Sender.log(MainActivity.this, r);
+            runOnUiThread(() -> web.evaluateJavascript("window.glamoraUpdateResult&&window.glamoraUpdateResult(" + JSONObject.quote(r) + ")", null));
         }
 
         @JavascriptInterface

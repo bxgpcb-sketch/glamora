@@ -48,6 +48,12 @@
             </intent-filter>
         </receiver>
 
+        <provider
+            android:name=".ApkProvider"
+            android:authorities="ro.glamora.sms.apk"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
         <receiver
             android:name=".UpdateReceiver"
             android:exported="false" />
