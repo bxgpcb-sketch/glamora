@@ -156,6 +156,9 @@ public class MainActivity extends Activity {
                         .put("batteryOk", pm != null && pm.isIgnoringBatteryOptimizations(getPackageName()))
                         .put("staff", p.getString("staff", ""))
                         .put("log", p.getString("log", ""))
+                        .put("signedIn", Fb.isSignedIn(MainActivity.this))
+                        .put("lastJobAt", p.getLong("lastJobAt", 0))
+                        .put("lastScanAt", p.getLong("lastScanAt", 0))
                         .put("version", Updater.currentName(MainActivity.this))
                         .put("latest", p.getString("latestVersion", ""))
                         .put("updateAvailable", Updater.updateAvailable(MainActivity.this))
@@ -213,6 +216,14 @@ public class MainActivity extends Activity {
                 String r = Updater.downloadAndAsk(MainActivity.this);
                 Sender.log(MainActivity.this, r);
                 runOnUiThread(() -> web.evaluateJavascript("window.glamoraUpdateResult&&window.glamoraUpdateResult(" + JSONObject.quote(r) + ")", null));
+            }).start();
+        }
+
+        @JavascriptInterface
+        public void checkReplies() {
+            new Thread(() -> {
+                Sender.log(MainActivity.this, Sender.scanInbox(MainActivity.this, true));
+                runOnUiThread(() -> web.evaluateJavascript("window.glamoraRefresh&&window.glamoraRefresh()", null));
             }).start();
         }
 

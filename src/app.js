@@ -378,6 +378,12 @@ function openSmsSettings(){
         ${st.smsOk?"":`<button class="btn primary" id="sPerm" style="width:100%;margin-top:8px">Permite SMS</button>`}
         <div class="kv"><span>Rulează în fundal</span><b style="color:${st.batteryOk?"var(--ok)":"var(--bad)"}">${st.batteryOk?"✓ Da":"✕ Nu"}</b></div>
         ${st.batteryOk?"":`<button class="btn" id="sBatt" style="width:100%;margin-top:8px">Permite rularea în fundal</button>`}
+        ${"signedIn" in st?`<div class="kv"><span>Conectată pentru SMS</span><b style="color:${st.signedIn?"var(--ok)":"var(--bad)"}">${st.signedIn?"✓ Da":"✕ Nu – ieși și intră din nou în cont"}</b></div>
+        <div class="kv"><span>Ultima verificare automată</span><b>${st.lastJobAt?new Date(st.lastJobAt).toLocaleString("ro-RO",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"niciuna încă"}</b></div>
+        <div class="kv"><span>Ultima citire a SMS-urilor</span><b>${st.lastScanAt?new Date(st.lastScanAt).toLocaleString("ro-RO",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"niciuna încă"}</b></div>
+        <button class="btn primary" id="sCheck" style="width:100%;margin-top:14px">Verifică acum răspunsurile 1/0</button>
+`:`<p class="warn">Actualizează aplicația (banda de sus sau butonul de mai jos) ca să vezi verificările.</p>`}
+        <p class="hint" style="font-size:13px;margin:8px 0 0">Dacă clientele răspund dar nu apare nimic aici, oprește „Funcțiile de chat” (RCS) din aplicația de mesaje: răspunsurile prin chat nu sunt SMS.</p>
         <button class="btn" id="sNow" style="width:100%;margin-top:14px">Trimite acum reamintirile pentru mâine</button>
         <h3 class="sec">Aplicație</h3>
         <div class="kv"><span>Versiune</span><b>${esc(st.version||"?")}${st.updateAvailable?` → ${esc(st.latest)} disponibilă`:""}</b></div>
@@ -392,6 +398,7 @@ function openSmsSettings(){
     const p=$("#sPerm");if(p)p.onclick=()=>APP.requestSmsPermission();
     const b=$("#sBatt");if(b)b.onclick=()=>APP.openBatterySettings();
     $("#sUpd").onclick=()=>{if(!st.canInstall){toast("Activează „Permite din această sursă”, apoi revino");APP.openInstallSettings();return}APP.installUpdate();toast("Se verifică…")};
+    const chk=$("#sCheck");if(chk)chk.onclick=()=>{APP.checkReplies();toast("Se verifică mesajele…");setTimeout(()=>{read();if(!m.hidden)draw()},4000)};
     $("#sNow").onclick=()=>{APP.runNow();toast("Se trimit…");setTimeout(()=>{read();if(!m.hidden)draw()},5000)};
   };
   const close=()=>{m.hidden=true;m.innerHTML="";lockScroll(false);window.glamoraRefresh=null};

@@ -361,28 +361,36 @@ public class Sender {
     }
 
     /** Safety net: reads 1/0 replies from the SMS inbox in case the live receiver was blocked by the phone. */
-    public static void scanInbox(Context c) {
-        if (c.checkSelfPermission(android.Manifest.permission.READ_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
-        if (!Fb.isSignedIn(c)) return;
+    public static void scanInbox(Context c) { scanInbox(c, false); }
+
+    /** Reads 1/0 replies from the SMS inbox. With report=true returns a short summary for the colleague. */
+    public static String scanInbox(Context c, boolean report) {
+        if (c.checkSelfPermission(android.Manifest.permission.READ_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            return report ? "Lipsește permisiunea de citire SMS: apasă „Permite SMS”." : null;
+        if (!Fb.isSignedIn(c)) return report ? "Aplicația nu e conectată pentru SMS: ieși din cont și intră din nou." : null;
         SharedPreferences p = prefs(c);
         retryUnmatched(c);
         if (!p.getBoolean("rescan107", false)) p.edit().putBoolean("rescan107", true).remove("inboxSince").apply();
         long since = p.getLong("inboxSince", System.currentTimeMillis() - 3L * 24 * 3600 * 1000);
-        long max = since;
+        if (report) since = Math.min(since, System.currentTimeMillis() - 3L * 24 * 3600 * 1000); // manual check looks back 3 days
+        long max = p.getLong("inboxSince", since);
+        int total = 0, answers = 0;
         try (android.database.Cursor cur = c.getContentResolver().query(android.provider.Telephony.Sms.Inbox.CONTENT_URI,
                 new String[]{"address", "body", "date"}, "date > ?", new String[]{String.valueOf(since)}, "date ASC")) {
-            if (cur == null) return;
-            while (cur.moveToNext()) {
+            if (cur != null) while (cur.moveToNext()) {
                 String addr = cur.getString(0), body = cur.getString(1);
                 long when = cur.getLong(2);
+                total++;
                 if (when > max) max = when;
                 if (addr == null || body == null || replyStatus(body) == null) continue;
+                answers++;
                 log(c, handleReply(c, addr, body, when));
             }
         } catch (Exception e) {
-            log(c, "Nu pot citi mesajele primite: " + e.getMessage());
+            return "Nu pot citi mesajele primite: " + e.getMessage();
         }
-        p.edit().putLong("inboxSince", max).apply();
+        p.edit().putLong("inboxSince", max).putLong("lastScanAt", System.currentTimeMillis()).apply();
+        return report ? "Verificat: " + total + " SMS primite în ultimele 3 zile, dintre care " + answers + " răspunsuri 1/0." : null;
     }
 
     public static void log(Context c, String line) {
