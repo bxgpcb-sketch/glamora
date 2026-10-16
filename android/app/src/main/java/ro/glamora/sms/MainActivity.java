@@ -106,6 +106,11 @@ public class MainActivity extends Activity {
         new Thread(() -> Sender.scanInbox(getApplicationContext())).start();
     }
 
+    boolean chatAccess() {
+        String s = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
+        return s != null && s.contains(getPackageName());
+    }
+
     boolean smsOk() {
         return checkSelfPermission(Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
                 && checkSelfPermission(Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
@@ -157,6 +162,7 @@ public class MainActivity extends Activity {
                         .put("staff", p.getString("staff", ""))
                         .put("log", p.getString("log", ""))
                         .put("signedIn", Fb.isSignedIn(MainActivity.this))
+                        .put("chatOk", chatAccess())
                         .put("lastJobAt", p.getLong("lastJobAt", 0))
                         .put("lastScanAt", p.getLong("lastScanAt", 0))
                         .put("version", Updater.currentName(MainActivity.this))
@@ -235,6 +241,22 @@ public class MainActivity extends Activity {
         void report(String r) {
             Sender.log(MainActivity.this, r);
             runOnUiThread(() -> web.evaluateJavascript("window.glamoraUpdateResult&&window.glamoraUpdateResult(" + JSONObject.quote(r) + ")", null));
+        }
+
+        @JavascriptInterface
+        public void openChatAccess() {
+            runOnUiThread(() -> {
+                try { startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)); }
+                catch (Exception e) { Sender.log(MainActivity.this, "Nu pot deschide setarea de acces la notificări."); }
+            });
+        }
+
+        @JavascriptInterface
+        public void openAppInfo() {
+            runOnUiThread(() -> {
+                try { startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))); }
+                catch (Exception ignored) { }
+            });
         }
 
         @JavascriptInterface

@@ -340,6 +340,55 @@ public class Sender {
         }
     }
 
+    static String fold(String s) { return plain(s).toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9 ]", " ").replaceAll("\\s+", " ").trim(); }
+
+    /**
+     * A reply seen in a chat (RCS) notification. The sender is a phone number when the client is not in
+     * the phone's contacts, otherwise the contact name: then we match it to the client name of a waiting appointment.
+     */
+    public static synchronized String handleReplyFromChat(Context c, String sender, String body, long when) {
+        try {
+            String s = sender.startsWith("tel:") ? sender.substring(4) : sender;
+            if (digits(s).length() >= 9) return handleReply(c, s, body, when);
+            String status = replyStatus(body);
+            if (status == null || !Fb.isSignedIn(c)) return null;
+            SharedPreferences p = prefs(c);
+            String name = fold(s);
+            if (name.isEmpty()) return null;
+            String msgId = "n:" + name + "|" + plain(body).trim().toLowerCase(Locale.ROOT) + "|" + new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new java.util.Date(when));
+            JSONObject seen = new JSONObject(p.getString("seenReplies2", "{}"));
+            if (seen.has(msgId)) return null;
+            String staff = p.getString("staff", "");
+            if (staff.isEmpty()) staff = loadStaff(c);
+            if (staff.isEmpty()) return null;
+            Calendar d = Calendar.getInstance();
+            SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT);
+            List<Fb.Doc> hits = new ArrayList<>();
+            for (int i = 0; i < 8; i++) {
+                for (Fb.Doc a : Fb.appointments(c, f.format(d.getTime()), staff)) {
+                    if (a.str("confirmRequestedAt").isEmpty() || !a.str("replyAt").isEmpty()) continue;
+                    String cn = fold(a.str("client"));
+                    if (cn.isEmpty()) continue;
+                    if (cn.equals(name) || cn.startsWith(name + " ") || name.startsWith(cn + " ") || cn.contains(name) || name.contains(cn)) hits.add(a);
+                }
+                if (!hits.isEmpty()) break;
+                d.add(Calendar.DAY_OF_MONTH, 1);
+            }
+            if (hits.size() != 1) return hits.isEmpty() ? null : "Răspuns „" + body.trim() + "” de la " + sender + ": mai multe programări cu numele acesta, marchează manual.";
+            Fb.Doc a = hits.get(0);
+            Map<String, String> upd = new HashMap<>();
+            upd.put("status", status);
+            upd.put("replyText", body.trim());
+            upd.put("replyAt", iso());
+            Fb.update(c, "appointments/" + a.id, upd);
+            seen.put(msgId, f.format(new java.util.Date()));
+            p.edit().putString("seenReplies2", seen.toString()).apply();
+            return (status.equals("confirmata") ? "✓ Confirmat (chat): " : "✕ Anulat (chat): ") + a.str("client") + " (" + a.str("date") + ")";
+        } catch (Exception e) {
+            return "Eroare la răspuns din chat: " + e.getMessage();
+        }
+    }
+
     /** Tries again the replies that had no matching appointment (kept up to 3 days). */
     static void retryUnmatched(Context c) {
         try {
