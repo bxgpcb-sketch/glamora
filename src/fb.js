@@ -62,6 +62,7 @@ export const authApi = {
   onChange: (fn) => onAuthStateChanged(auth, fn),
   signIn: (email, pass) => signInWithEmailAndPassword(auth, email, pass),
   signOut: () => signOut(auth),
+  refresh: () => (auth.currentUser ? auth.currentUser.getIdToken(true) : Promise.resolve(null)),
   resetPassword: (email) => sendPasswordResetEmail(auth, email),
   async changePassword(current, next) {
     const u = auth.currentUser;

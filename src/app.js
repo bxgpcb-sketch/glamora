@@ -112,12 +112,23 @@ function renderGrid(){
     const target=S.date===todayStr()&&nowM>ws&&nowM<we?nowM-30:ws;
     sc.scrollTop=Math.max(0,(target-start)*k)}
 }
+/* permission-denied: refresh the sign-in token once and resubscribe; if it persists, say what to check */
+let deniedRetry=0;
+async function dataError(e,what){
+  if(e&&e.code==="permission-denied"&&deniedRetry<1){deniedRetry++;
+    try{await authApi.refresh()}catch(x){}
+    stopData();startData();return}
+  const n=$("#dbNotice");n.hidden=false;
+  n.textContent=e&&e.code==="permission-denied"
+    ?"Baza de date refuză accesul (permission-denied). Verifică în Firebase → Firestore Database → Rules că regulile Glamora sunt publicate, apoi deschide din nou aplicația."
+    :what+" nu s-a încărcat ("+(e&&e.code)+"). Verifică internetul și încearcă din nou.";
+}
 function subscribeDay(){
   if(S.unsubAppts){S.unsubAppts();S.unsubAppts=null}
   S.appts=[];S.needScroll=true;renderGrid();if(!S.db)return;
   S.unsubAppts=S.db.collection("appointments").where("date","==",S.date).onSnapshot(snap=>{
     S.appts=snap.docs.map(d=>({id:d.id,...d.data()}));renderGrid();
-    if(APP&&S.profile?.staff)S.appts.filter(x=>x.needsConfirm===S.profile.staff).forEach(x=>{try{APP.newAppointment(x.id)}catch(e){}})},e=>toast("Agenda nu s-a încărcat ("+e.code+")"));
+    if(APP&&S.profile?.staff)S.appts.filter(x=>x.needsConfirm===S.profile.staff).forEach(x=>{try{APP.newAppointment(x.id)}catch(e){}})},e=>dataError(e,"Agenda"));
 }
 function goDate(d){S.date=d;subscribeDay()}
 $("#prevDay").onclick=()=>goDate(shiftDate(S.date,-1));
@@ -498,7 +509,7 @@ function startData(){
   S.db=db;
   subs.push(db.doc("config/salon").onSnapshot(s=>{
     if(!s.exists){if(!s.fromCache&&!seeded){seeded=true;db.doc("config/salon").set(DEFAULTS).catch(()=>{})}return}
-    const d=s.data();S.services=Array.isArray(d.services)?d.services:[];if(d.hours)S.hours=d.hours;S.autoSms=d.autoSms||{};renderGrid()},e=>toast("Eroare la încărcare ("+e.code+")")));
+    const d=s.data();S.services=Array.isArray(d.services)?d.services:[];if(d.hours)S.hours=d.hours;S.autoSms=d.autoSms||{};renderGrid()},e=>dataError(e,"Setările")));
   subs.push(db.collection("clients").onSnapshot(s=>{S.clients=s.docs.map(d=>({id:d.id,...d.data()}))},()=>{}));
   subscribeDay();
 }
