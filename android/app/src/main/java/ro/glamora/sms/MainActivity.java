@@ -64,6 +64,10 @@ public class MainActivity extends Activity {
         if (b != null) web.restoreState(b);
         else web.loadUrl(HOME);
 
+        new Thread(() -> {
+            Updater.check(getApplicationContext());
+            runOnUiThread(() -> web.evaluateJavascript("window.glamoraUpdate&&window.glamoraUpdate()", null));
+        }).start();
         try { ReminderJob.schedule(this); } catch (Throwable t) { Sender.log(this, "Programarea verificării a eșuat: " + t); }
         if (!smsOk()) requestSms();
     }
@@ -98,7 +102,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (web != null) web.evaluateJavascript("window.glamoraRefresh&&window.glamoraRefresh()", null);
+        if (web != null) web.evaluateJavascript("window.glamoraRefresh&&window.glamoraRefresh();window.glamoraUpdate&&window.glamoraUpdate()", null);
         new Thread(() -> Sender.scanInbox(getApplicationContext())).start();
     }
 
@@ -152,6 +156,10 @@ public class MainActivity extends Activity {
                         .put("batteryOk", pm != null && pm.isIgnoringBatteryOptimizations(getPackageName()))
                         .put("staff", p.getString("staff", ""))
                         .put("log", p.getString("log", ""))
+                        .put("version", Updater.currentName(MainActivity.this))
+                        .put("latest", p.getString("latestVersion", ""))
+                        .put("updateAvailable", Updater.updateAvailable(MainActivity.this))
+                        .put("canInstall", Updater.canInstall(MainActivity.this))
                         .toString();
             } catch (Exception e) { return "{}"; }
         }
@@ -188,6 +196,24 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void newAppointment(String id) {
             new Thread(() -> Sender.log(MainActivity.this, Sender.sendConfirmation(MainActivity.this, id))).start();
+        }
+
+        @JavascriptInterface
+        public void openInstallSettings() {
+            runOnUiThread(() -> {
+                try { startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()))); }
+                catch (Exception e) { Sender.log(MainActivity.this, "Nu pot deschide setarea de instalare."); }
+            });
+        }
+
+        /** The colleague tapped "Actualizează": download and let Android ask for confirmation. */
+        @JavascriptInterface
+        public void installUpdate() {
+            new Thread(() -> {
+                String r = Updater.downloadAndAsk(MainActivity.this);
+                Sender.log(MainActivity.this, r);
+                runOnUiThread(() -> web.evaluateJavascript("window.glamoraUpdateResult&&window.glamoraUpdateResult(" + JSONObject.quote(r) + ")", null));
+            }).start();
         }
 
         @JavascriptInterface

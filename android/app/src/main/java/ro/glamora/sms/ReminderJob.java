@@ -28,6 +28,7 @@ public class ReminderJob extends JobService {
     public boolean onStartJob(final JobParameters params) {
         final Context app = getApplicationContext();
         new Thread(() -> {
+            if (System.currentTimeMillis() - Fb.prefs(app).getLong("lastUpdateCheck", 0) > 6L * 3600 * 1000) Updater.check(app);
             Sender.scanInbox(app);
             Sender.sendPendingConfirmations(app);
             Sender.publishAuto(app);

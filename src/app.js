@@ -371,6 +371,9 @@ function openSmsSettings(){
         <div class="kv"><span>Rulează în fundal</span><b style="color:${st.batteryOk?"var(--ok)":"var(--bad)"}">${st.batteryOk?"✓ Da":"✕ Nu"}</b></div>
         ${st.batteryOk?"":`<button class="btn" id="sBatt" style="width:100%;margin-top:8px">Permite rularea în fundal</button>`}
         <button class="btn" id="sNow" style="width:100%;margin-top:14px">Trimite acum reamintirile pentru mâine</button>
+        <h3 class="sec">Aplicație</h3>
+        <div class="kv"><span>Versiune</span><b>${esc(st.version||"?")}${st.updateAvailable?` → ${esc(st.latest)} disponibilă`:""}</b></div>
+        <button class="btn" id="sUpd" style="width:100%;margin-top:8px">${st.updateAvailable?"Actualizează acum":"Caută actualizare"}</button>
         <h3 class="sec">Ce s-a trimis / primit</h3>
         <pre class="smslog">${esc(st.log||"Nimic încă.")}</pre>`}
       </div></div>`;
@@ -380,12 +383,21 @@ function openSmsSettings(){
     $("#sConf").onchange=save;$("#sRem").onchange=save;$("#sHour").onchange=save;
     const p=$("#sPerm");if(p)p.onclick=()=>APP.requestSmsPermission();
     const b=$("#sBatt");if(b)b.onclick=()=>APP.openBatterySettings();
+    $("#sUpd").onclick=()=>{if(!st.canInstall){toast("Activează „Permite din această sursă”, apoi revino");APP.openInstallSettings();return}APP.installUpdate();toast("Se verifică…")};
     $("#sNow").onclick=()=>{APP.runNow();toast("Se trimit…");setTimeout(()=>{read();if(!m.hidden)draw()},5000)};
   };
   const close=()=>{m.hidden=true;m.innerHTML="";lockScroll(false);window.glamoraRefresh=null};
   window.glamoraRefresh=()=>{read();if(!m.hidden)draw()};
   m.hidden=false;lockScroll(true);draw();
 }
+/* Android app updates: banner when a newer version is on the site; installing always asks for confirmation */
+window.glamoraUpdate=()=>{if(!APP)return;let st={};try{st=JSON.parse(APP.getSettings())}catch(e){}
+  const b=$("#updBanner");if(!b)return;b.hidden=!st.updateAvailable;
+  if(st.updateAvailable)$("#updText").textContent="Versiune nouă Glamora ("+st.latest+")";};
+window.glamoraUpdateResult=msg=>{toast(msg);const btn=$("#updBtn");if(btn){btn.disabled=false;btn.textContent="Actualizează"}};
+if(APP)$("#updBtn").onclick=()=>{let st={};try{st=JSON.parse(APP.getSettings())}catch(e){}
+  if(!st.canInstall){toast("Activează „Permite din această sursă”, apoi revino și apasă din nou");APP.openInstallSettings();return}
+  $("#updBtn").disabled=true;$("#updBtn").textContent="Se descarcă…";APP.installUpdate()};
 /* Android back button: close the top overlay first */
 window.glamoraBack=()=>{for(const id of ["#calModal","#drawer","#modal"]){const el=$(id);if(el&&!el.hidden){el.hidden=true;el.innerHTML="";if(id!=="#calModal"||$("#modal").hidden)lockScroll(false);return true}}return false};
 
