@@ -56,15 +56,34 @@ public class Sender {
         return d.length() > 9 ? d.substring(d.length() - 9) : d;
     }
 
-    static String message(Fb.Doc a, Calendar day) {
-        String client = a.str("client");
-        String service = a.str("service");
-        return plain("Buna ziua" + (client.isEmpty() ? "" : ", " + client) + "! Va reamintim programarea la Salon Vintage maine, "
-                + DAYS[day.get(Calendar.DAY_OF_WEEK) - 1] + " " + day.get(Calendar.DAY_OF_MONTH) + " " + MONTHS[day.get(Calendar.MONTH)]
-                + ", ora " + a.str("start") + ", la " + staffName(a.str("staff"))
-                + (service.isEmpty() ? "" : " (" + service + ")")
-                + ". Raspundeti cu 1 pentru confirmare sau 0 pentru anulare. Multumim!");
+    static final String ADDR = "la Salon Vintage piata Mihail Kogalniceanu nr. 6 bl. I2 sc. D ap. 46 zona muzeului de istorie.";
+    static final String DEF_CONFIRM = "Buna ziua, {zi} {data} la {ora} aveti programare " + ADDR + " Va asteptam!";
+    static final String DEF_REMIND10 = "Buna ziua, {zi} {data} la {ora} aveti programare " + ADDR + " Raspundeti cu 1 pentru confirmare sau 0 pentru anulare. Va asteptam!";
+
+    /** Message templates from config/salon.templates (set by the Glamora web app), with built-in fallbacks. */
+    static String template(Context c, String name, String def) {
+        try {
+            Fb.Doc d = Fb.get(c, "config/salon");
+            if (d != null && d.fields.has("templates")) {
+                JSONObject f = d.fields.getJSONObject("templates").getJSONObject("mapValue").getJSONObject("fields");
+                if (f.has(name)) {
+                    String v = f.getJSONObject(name).optString("stringValue", "");
+                    if (!v.isEmpty()) return v;
+                }
+            }
+        } catch (Exception ignored) { }
+        return def;
     }
+
+    static String fill(String tpl, Fb.Doc a) {
+        Calendar day = parseDate(a.str("date"));
+        String data = String.format(Locale.ROOT, "%02d.%02d.%d", day.get(Calendar.DAY_OF_MONTH), day.get(Calendar.MONTH) + 1, day.get(Calendar.YEAR));
+        return plain(tpl.replace("{zi}", DAYS[day.get(Calendar.DAY_OF_WEEK) - 1]).replace("{data}", data)
+                .replace("{ora}", a.str("start")).replace("{nume}", a.str("client"))
+                .replace("{lucratoare}", staffName(a.str("staff"))).replace("{serviciu}", a.str("service")));
+    }
+
+    static String message(Context c, Fb.Doc a) { return fill(template(c, "remind10", DEF_REMIND10), a); }
 
     static boolean isBlock(String service) {
         String s = plain(service).trim().toLowerCase(Locale.ROOT);
@@ -120,7 +139,7 @@ public class Sender {
                 if ("anulata".equals(a.str("status"))) continue;
                 if (!a.str("confirmRequestedAt").isEmpty() || sentIds.has(a.id)) continue;
 
-                sendSms(c, digits(phone), message(a, day));
+                sendSms(c, digits(phone), message(c, a));
                 sentIds.put(a.id, date);
                 pending.put(key(phone), new JSONObject().put("id", a.id).put("date", date).put("client", a.str("client")));
                 p.edit().putString("sentIds", sentIds.toString()).putString("pending", pending.toString()).apply();
@@ -151,14 +170,7 @@ public class Sender {
         return d;
     }
 
-    static String confirmationText(Fb.Doc a) {
-        Calendar day = parseDate(a.str("date"));
-        String client = a.str("client"), service = a.str("service");
-        return plain("Buna ziua" + (client.isEmpty() ? "" : ", " + client) + "! Programarea dvs. la Salon Vintage a fost acceptata: "
-                + DAYS[day.get(Calendar.DAY_OF_WEEK) - 1] + " " + day.get(Calendar.DAY_OF_MONTH) + " " + MONTHS[day.get(Calendar.MONTH)]
-                + ", ora " + a.str("start") + ", la " + staffName(a.str("staff"))
-                + (service.isEmpty() ? "" : " (" + service + ")") + ". Va asteptam!");
-    }
+    static String confirmationText(Context c, Fb.Doc a) { return fill(template(c, "confirm", DEF_CONFIRM), a); }
 
     static final Set<String> inFlight = new HashSet<>();
 
@@ -185,7 +197,7 @@ public class Sender {
                     || a.str("date").compareTo(today) < 0) { clearNeeds(c, id); return null; }
             if (c.checkSelfPermission(android.Manifest.permission.SEND_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
                 return "Lipsește permisiunea SMS: confirmarea pentru " + a.str("client") + " nu a plecat.";
-            sendSms(c, digits(a.str("phone")), confirmationText(a));
+            sendSms(c, digits(a.str("phone")), confirmationText(c, a));
             done.put(id, a.str("date"));
             p.edit().putString("confirmed", done.toString()).apply();
             Map<String, String> upd = new HashMap<>();

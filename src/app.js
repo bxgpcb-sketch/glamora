@@ -34,12 +34,24 @@ function staffName(id){return (STAFF.find(s=>s.id===id)||{}).name||id}
 function splitClient(v){v=String(v||"").trim();const m=v.match(/^(.*?)[\s,;-]*((?:\+?\d[\d\s.\-]{5,}\d))$/);
   return m?{name:m[1].trim(),phone:m[2].trim()}:{name:v,phone:""}}
 function isBlock(name){const n=String(name||"").trim().toLowerCase();return S.services.some(s=>s.block&&s.name.toLowerCase()===n)||n==="pauză"||n==="pauza"||n==="ocupat"}
+/* Mesajele către cliente. Se pot schimba aici; aplicația Android le citește din config/salon.templates. */
+const TPL_VERSION=2;
+const TEMPLATES={
+  confirm:"Buna ziua, {zi} {data} la {ora} aveti programare la Salon Vintage piata Mihail Kogalniceanu nr. 6 bl. I2 sc. D ap. 46 zona muzeului de istorie. Va asteptam!",
+  remind:"Buna ziua, {zi} {data} la {ora} aveti programare la Salon Vintage piata Mihail Kogalniceanu nr. 6 bl. I2 sc. D ap. 46 zona muzeului de istorie. Va asteptam!",
+  remind10:"Buna ziua, {zi} {data} la {ora} aveti programare la Salon Vintage piata Mihail Kogalniceanu nr. 6 bl. I2 sc. D ap. 46 zona muzeului de istorie. Raspundeti cu 1 pentru confirmare sau 0 pentru anulare. Va asteptam!"};
+const ZILE=["duminica","luni","marti","miercuri","joi","vineri","sambata"];
+function fillTpl(t,a){const d=new Date((a.date||todayStr())+"T12:00:00");
+  return t.replace(/\{zi\}/g,ZILE[d.getDay()]).replace(/\{data\}/g,pad(d.getDate())+"."+pad(d.getMonth()+1)+"."+d.getFullYear())
+    .replace(/\{ora\}/g,a.start||"").replace(/\{nume\}/g,a.client||"").replace(/\{lucratoare\}/g,staffName(a.staff))
+    .replace(/\{serviciu\}/g,a.service||"")}
+function confirmation(a){return fillTpl(TEMPLATES.confirm,a)}
+function reminder(a){return fillTpl(TEMPLATES.remind,a)}
+function detailed(a){return fillTpl(TEMPLATES.remind10,a)}
 function clientLine(a){return a.phone?`${a.client} ${a.phone}`:(a.client||"")}
 function intl(phone){let d=digits(phone);if(String(phone).trim().startsWith("+"))return d;if(d.startsWith("00"))return d.slice(2);if(d.startsWith("0"))return "40"+d.slice(1);return d}
 const STATUSES=[["acceptata","Acceptată"],["confirmata","Confirmată"],["anulata","Anulată"]];
 function statusLabel(k){return (STATUSES.find(x=>x[0]===k)||STATUSES[0])[1]}
-function detailed(a){return `Bună ziua${a.client?", "+a.client:""}! Vă reamintim programarea la Salon Vintage ${fmtDate(a.date)}, ora ${a.start}, la ${staffName(a.staff)}${a.service?" ("+a.service+")":""}. Răspundeți cu 1 pentru confirmare sau 0 pentru anulare. Mulțumim!`}
-function reminder(a){return `Bună ziua${a.client?", "+a.client:""}! Vă reamintim programarea la Salon Vintage ${fmtDate(a.date)}, ora ${a.start}, la ${staffName(a.staff)}${a.service?" ("+a.service+")":""}. Vă așteptăm!`}
 function durOptions(sel){const list=DURS.includes(Number(sel))?DURS:[...DURS,Number(sel)].sort((a,b)=>a-b);return list.map(d=>`<option value="${d}" ${d===Number(sel)?"selected":""}>${durLabel(d)}</option>`).join("")}
 async function copyText(t){try{await navigator.clipboard.writeText(t);toast("Text copiat")}catch(e){toast("Nu s-a putut copia")}}
 function lockScroll(on){document.body.style.overflow=on?"hidden":""}
@@ -308,7 +320,6 @@ function openServicePicker(staff,current,onPick){
 }
 
 /* ---------- after saving a new appointment: send the confirmation from the stylist's own phone ---------- */
-function confirmation(a){return `Bună ziua${a.client?", "+a.client:""}! Programarea dvs. la Salon Vintage a fost acceptată: ${fmtDate(a.date)}, ora ${a.start}, la ${staffName(a.staff)}${a.service?" ("+a.service+")":""}. Vă așteptăm!`}
 function showAccepted(id,a){
   const m=$("#modal"),msg=confirmation(a),num=digits(a.phone);
   m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="okTitle">
@@ -513,7 +524,8 @@ function startData(){
   S.db=db;
   subs.push(db.doc("config/salon").onSnapshot(s=>{
     if(!s.exists){if(!s.fromCache&&!seeded){seeded=true;db.doc("config/salon").set(DEFAULTS).catch(()=>{})}return}
-    const d=s.data();S.services=Array.isArray(d.services)?d.services:[];if(d.hours)S.hours=d.hours;S.autoSms=d.autoSms||{};renderGrid()},e=>dataError(e,"Setările")));
+    const d=s.data();S.services=Array.isArray(d.services)?d.services:[];if(d.hours)S.hours=d.hours;S.autoSms=d.autoSms||{};renderGrid();
+    if(d.templatesVersion!==TPL_VERSION&&!S.tplSaving){S.tplSaving=true;db.doc("config/salon").update({templates:TEMPLATES,templatesVersion:TPL_VERSION}).catch(()=>{}).finally(()=>{S.tplSaving=false})}},e=>dataError(e,"Setările")));
   subs.push(db.collection("clients").onSnapshot(s=>{S.clients=s.docs.map(d=>({id:d.id,...d.data()}))},()=>{}));
   subscribeDay();
 }
