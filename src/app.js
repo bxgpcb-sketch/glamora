@@ -110,7 +110,7 @@ function renderGrid(){
   {const r=relDay(S.date);$("#dateSub").textContent=(/^\d{4}$/.test(r)?"":r+" · ")+workLabel(S.date)+" · "+S.appts.length+" prog."}
   if(S.needScroll){S.needScroll=false;const sc=$("#scroller");
     const target=S.date===todayStr()&&nowM>ws&&nowM<we?nowM-30:ws;
-    sc.scrollTop=Math.max(0,(target-start)*k)}
+    sc.scrollTop=Math.max(0,(target-start)*k);centerMyColumn()}
 }
 /* permission-denied: refresh the sign-in token once and resubscribe; if it persists, say what to check */
 let deniedRetry=0;
@@ -123,6 +123,10 @@ async function dataError(e,what){
     ?"Baza de date refuză accesul (permission-denied). Verifică în Firebase → Firestore Database → Rules că regulile Glamora sunt publicate, apoi deschide din nou aplicația."
     :what+" nu s-a încărcat ("+(e&&e.code)+"). Verifică internetul și încearcă din nou.";
 }
+/* open on the signed-in colleague's column (centred) */
+function centerMyColumn(){const i=STAFF.findIndex(x=>x.id===S.profile?.staff);if(i<0)return;
+  const sc=$("#scroller");if(!sc)return;const cw=sc.scrollWidth/STAFF.length;
+  sc.scrollLeft=Math.max(0,Math.min(sc.scrollWidth-sc.clientWidth,i*cw+cw/2-sc.clientWidth/2))}
 function subscribeDay(){
   if(S.unsubAppts){S.unsubAppts();S.unsubAppts=null}
   S.appts=[];S.needScroll=true;renderGrid();if(!S.db)return;
@@ -475,7 +479,7 @@ function pickProfile(force){return new Promise(res=>{
   m.querySelectorAll(".who-pick").forEach(b=>b.onclick=async()=>{
     const p={staff:b.dataset.id||null,name:b.dataset.id?staffName(b.dataset.id):"Administrator",email:S.user.email,updatedAt:new Date().toISOString()};
     try{await db.doc("users/"+S.user.uid).set(p)}catch(e){}
-    S.profile=p;done();toast("Bun venit, "+p.name+"!")});
+    S.profile=p;done();centerMyColumn();toast("Bun venit, "+p.name+"!")});
 })}
 
 /* ---------- login ---------- */
@@ -528,6 +532,7 @@ authApi.onChange(async user=>{
   if(APP)try{APP.setSession(user.refreshToken||"",user.uid,user.email||"")}catch(e){}
   S.user=user;$("#login").hidden=true;$("#appRoot").hidden=false;$("#lPass").value="";
   try{const p=await db.doc("users/"+user.uid).get();S.profile=p.exists?p.data():null}catch(e){S.profile=null}
+  requestAnimationFrame(centerMyColumn);
   startData();
   if(!S.profile)await pickProfile(false);
 });
