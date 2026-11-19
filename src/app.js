@@ -305,16 +305,30 @@ document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;
   for(const id of ["#calModal","#drawer","#modal"]){const el=$(id);if(!el.hidden){el.hidden=true;el.innerHTML="";break}}});
 
 async function saveClient(d){const key=digits(d.phone);if(key.length<6)return;
-  const ex=S.clients.find(c=>c.id===key);if(ex&&ex.name===d.client)return;
-  await S.db.collection("clients").doc(key).set({name:d.client,phone:d.phone,createdAt:ex?.createdAt||new Date().toISOString()});
-  await S.db.appendToList("clientIndex/recent","list",{i:key,n:d.client,p:d.phone}).catch(()=>{})}
+  const ex=S.clients.find(c=>c.id===key);
+  if(ex&&(fold(ex.name)===fold(d.client)||(ex.alias||[]).some(n=>fold(n)===fold(d.client))))return;
+  await S.db.collection("clients").doc(key).set({name:d.client,phone:d.phone,createdAt:ex?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()});
+  const alias=ex?[ex.name,...(ex.alias||[])].filter(n=>n&&fold(n)!==fold(d.client)):[];
+  await S.db.appendToList("clientIndex/recent","list",{i:key,n:d.client,p:d.phone,a:alias}).catch(()=>{})}
 /* Lista de cliente se ține în câteva documente-index (nu câte un document citit pentru fiecare clientă),
    ca deschiderea aplicației să coste câteva citiri, nu mii. */
+/* O clientă poate avea alt nume în lista de cliente decât în programări (ex. „Laura APIA” vs. numele complet).
+   Numele principal = cel din cea mai recentă programare; celelalte rămân ca „alias” și se găsesc la căutare. */
+const IDX_VERSION=2;
 async function rebuildClientIndex(){
-  const cs=await S.db.collection("clients").get();
-  const all=cs.docs.map(d=>{const x=d.data();return {i:d.id,n:x.name||"",p:x.phone||""}});
-  const items=[];for(let k=0;k*1500<all.length||k===0;k++)items.push({path:"clientIndex/c"+k,data:{list:all.slice(k*1500,(k+1)*1500),at:new Date().toISOString()}});
-  items.push({path:"clientIndex/recent",data:{list:[],at:new Date().toISOString()}});
+  const [cs,as]=await Promise.all([S.db.collection("clients").get(),S.db.collection("appointments").get()]);
+  const by=new Map();
+  const add=(k,name,phone,when)=>{name=String(name||"").trim();if(k.length<6)return;
+    let e=by.get(k);if(!e){e={i:k,p:phone||"",names:new Map()};by.set(k,e)}
+    if(!e.p&&phone)e.p=phone;if(!name)return;
+    const f=fold(name),cur=e.names.get(f);if(!cur||when>cur.when)e.names.set(f,{name,when})};
+  cs.docs.forEach(d=>{const x=d.data();add(d.id,x.name,x.phone,x.source==="citybpm"?"0":String(x.updatedAt||"0").replace("T",""))});
+  as.docs.forEach(d=>{const x=d.data();if(isBlock(x.service))return;add(digits(x.phone),x.client,x.phone,(x.date||"")+(x.start||""))});
+  const all=[...by.values()].map(e=>{const ns=[...e.names.values()].sort((a,b)=>b.when.localeCompare(a.when));
+    return {i:e.i,n:ns[0]?ns[0].name:"",p:e.p,a:ns.slice(1).map(x=>x.name)}});
+  const at=new Date().toISOString(),items=[];
+  for(let k=0;k*1200<all.length||k===0;k++)items.push({path:"clientIndex/c"+k,data:{list:all.slice(k*1200,(k+1)*1200),at,v:IDX_VERSION}});
+  items.push({path:"clientIndex/recent",data:{list:[],at}});
   await S.db.batchSet(items);return all.length}
 
 /* ---------- service picker: search box on top, list right under it (stays above the phone keyboard) ---------- */
@@ -365,9 +379,10 @@ function showAccepted(id,a){
 /* ---------- people search: clients saved from earlier appointments ---------- */
 function fold(s){return String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"")}
 function searchPeople(q,max){const fq=fold(q),dq=digits(q),seen=new Set(),out=[];
-  const test=p=>(fold(p.name).includes(fq))||(dq.length>=3&&digits(p.phone).includes(dq));
+  const test=p=>fold(p.name).includes(fq)||(p.alias||[]).some(n=>fold(n).includes(fq))||(dq.length>=3&&digits(p.phone).includes(dq));
   for(const src of [S.clients])for(const p of src){if(out.length>=max)return out;
-    const k=digits(p.phone)||fold(p.name);if(seen.has(k)||!test(p))continue;seen.add(k);out.push({name:p.name,phone:p.phone||""})}
+    const k=digits(p.phone)||fold(p.name);if(seen.has(k)||!test(p))continue;seen.add(k);
+    const name=fold(p.name).includes(fq)?p.name:((p.alias||[]).find(n=>fold(n).includes(fq))||p.name);out.push({name,phone:p.phone||""})}
   return out}
 
 /* ---------- automatic SMS settings (Android app only) ---------- */
@@ -518,12 +533,12 @@ function openClients(){
   m.hidden=false;lockScroll(true);
   const close=()=>{m.hidden=true;m.innerHTML="";lockScroll(false)};
   $("#xBtn").onclick=close;
-  const draw=()=>{const q=$("#clientSearch").value.trim().toLowerCase(),qd=digits(q);
-    const list=S.clients.filter(c=>!q||String(c.name).toLowerCase().includes(q)||(qd&&digits(c.phone).includes(qd))).sort((a,b)=>String(a.name).localeCompare(String(b.name),"ro"));
+  const draw=()=>{const q=fold($("#clientSearch").value.trim()),qd=digits(q);
+    const list=S.clients.filter(c=>!q||fold(c.name).includes(q)||(c.alias||[]).some(n=>fold(n).includes(q))||(qd&&digits(c.phone).includes(qd))).sort((a,b)=>String(a.name).localeCompare(String(b.name),"ro"));
     const el=$("#clientList");
     if(!S.clients.length){el.innerHTML=`<div class="empty">Încă nu sunt cliente salvate. Fiecare programare cu număr de telefon o adaugă aici automat.</div>`;return}
     if(!list.length){el.innerHTML=`<div class="empty">Nicio clientă nu se potrivește.</div>`;return}
-    el.innerHTML=list.map(c=>`<div class="row"><div class="main" data-hist="${esc(c.id)}" role="button" tabindex="0"><b>${esc(c.name)}</b><span class="sub num">${esc(c.phone)} · istoric ▾</span></div>
+    el.innerHTML=list.map(c=>`<div class="row"><div class="main" data-hist="${esc(c.id)}" role="button" tabindex="0"><b>${esc(c.name)}</b>${c.alias&&c.alias.length?`<span class="sub">și: ${esc(c.alias.join(", "))}</span>`:""}<span class="sub num">${esc(c.phone)} · istoric ▾</span></div>
       <div class="mini"><a class="call" href="tel:${esc(digits(c.phone))}" aria-label="Sună">${ICON.call}</a><a class="wa" href="https://wa.me/${esc(intl(c.phone))}" target="_blank" rel="noopener" aria-label="WhatsApp">${ICON.wa}</a></div></div><div id="h-${esc(c.id)}" hidden></div>`).join("");
     el.querySelectorAll("[data-hist]").forEach(b=>b.onclick=async()=>{const box=$("#h-"+CSS.escape(b.dataset.hist));
       if(!box.hidden){box.hidden=true;return}box.hidden=false;box.innerHTML=`<div class="row sub">Se încarcă…</div>`;
@@ -616,9 +631,12 @@ function startData(){
     if(d.templatesVersion!==TPL_VERSION&&!S.tplSaving){S.tplSaving=true;db.doc("config/salon").update({templates:TEMPLATES,templatesVersion:TPL_VERSION}).catch(()=>{}).finally(()=>{S.tplSaving=false})}},e=>dataError(e,"Setările")));
   let idxChecked=false;
   subs.push(db.collection("clientIndex").onSnapshot(s=>{
-    const map=new Map();s.docs.slice().sort((a,b)=>a.id==="recent"?1:b.id==="recent"?-1:0).forEach(d=>{(d.data().list||[]).forEach(x=>map.set(x.i,{id:x.i,name:x.n,phone:x.p}))});
+    const map=new Map();s.docs.slice().sort((a,b)=>a.id==="recent"?1:b.id==="recent"?-1:0).forEach(d=>{(d.data().list||[]).forEach(x=>{const old=map.get(x.i);
+      const alias=[...(x.a||[]),...(old?[old.name,...old.alias]:[])].filter((n,j,arr)=>n&&fold(n)!==fold(x.n)&&arr.findIndex(m=>fold(m)===fold(n))===j);
+      map.set(x.i,{id:x.i,name:x.n,phone:x.p,alias})})});
     S.clients=[...map.values()];
-    if(!idxChecked&&!s.fromCache){idxChecked=true;if(s.empty)rebuildClientIndex().catch(()=>{})}},()=>{}));
+    if(!idxChecked&&!s.fromCache){idxChecked=true;const c0=s.docs.find(d=>d.id==="c0");
+      if(s.empty||!c0||(c0.data().v||1)<IDX_VERSION)rebuildClientIndex().catch(()=>{})}},()=>{}));
   subscribeDay();
 }
 
