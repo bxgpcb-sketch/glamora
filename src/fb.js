@@ -7,7 +7,7 @@ import {
 } from "firebase/auth";
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, query, where, onSnapshot, getDocs, getDoc, addDoc, setDoc, updateDoc, deleteDoc, writeBatch,
+  collection, doc, query, where, onSnapshot, getDocs, getDoc, addDoc, setDoc, updateDoc, deleteDoc, writeBatch, arrayUnion,
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -56,6 +56,8 @@ export const db = {
     return { ...q(ref, []), doc: (id) => d(id ? doc(ref, id) : doc(ref)), add: async (data) => d(await addDoc(ref, data)) };
   },
   doc: (path) => d(doc(fs, path)),
+  /** Adds an item to an array field, creating the document if needed. */
+  appendToList: (path, field, item) => setDoc(doc(fs, path), { [field]: arrayUnion(item) }, { merge: true }),
   /** Writes many documents in chunks of 400; items: [{path, data}]. onProgress(done,total). */
   async batchSet(items, onProgress) {
     for (let i = 0; i < items.length; i += 400) {

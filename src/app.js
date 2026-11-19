@@ -306,7 +306,16 @@ document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;
 
 async function saveClient(d){const key=digits(d.phone);if(key.length<6)return;
   const ex=S.clients.find(c=>c.id===key);if(ex&&ex.name===d.client)return;
-  await S.db.collection("clients").doc(key).set({name:d.client,phone:d.phone,createdAt:ex?.createdAt||new Date().toISOString()})}
+  await S.db.collection("clients").doc(key).set({name:d.client,phone:d.phone,createdAt:ex?.createdAt||new Date().toISOString()});
+  await S.db.appendToList("clientIndex/recent","list",{i:key,n:d.client,p:d.phone}).catch(()=>{})}
+/* Lista de cliente se ține în câteva documente-index (nu câte un document citit pentru fiecare clientă),
+   ca deschiderea aplicației să coste câteva citiri, nu mii. */
+async function rebuildClientIndex(){
+  const cs=await S.db.collection("clients").get();
+  const all=cs.docs.map(d=>{const x=d.data();return {i:d.id,n:x.name||"",p:x.phone||""}});
+  const items=[];for(let k=0;k*1500<all.length||k===0;k++)items.push({path:"clientIndex/c"+k,data:{list:all.slice(k*1500,(k+1)*1500),at:new Date().toISOString()}});
+  items.push({path:"clientIndex/recent",data:{list:[],at:new Date().toISOString()}});
+  await S.db.batchSet(items);return all.length}
 
 /* ---------- service picker: search box on top, list right under it (stays above the phone keyboard) ---------- */
 function openServicePicker(staff,current,onPick){
@@ -442,9 +451,9 @@ function openImport(){
       const data=JSON.parse(await file.text());
       if(!data||!Array.isArray(data.appointments))throw new Error("fișierul nu e un export Glamora");
       msg("Se verifică ce există deja în Glamora…");
-      const [as,cs]=await Promise.all([S.db.collection("appointments").get(),S.db.collection("clients").get()]);
+      const as=await S.db.collection("appointments").get();
       const haveIds=new Set(as.docs.map(d=>d.id)),haveSlots=new Set(as.docs.map(d=>{const x=d.data();return x.status==="anulata"?"":x.date+"|"+x.start+"|"+x.staff}));
-      const haveCli=new Set(cs.docs.map(d=>d.id));
+      const haveCli=new Set(S.clients.map(c=>c.id));
       const today=todayStr();
       const newA=data.appointments.filter(a=>!haveIds.has(a.id)&&!haveSlots.has(a.date+"|"+a.start+"|"+a.staff));
       const skipped=data.appointments.length-newA.length;
@@ -462,6 +471,7 @@ function openImport(){
         try{const items=[...plan.newC.map(c=>({path:"clients/"+c.id,data:{name:c.name,phone:c.phone,createdAt:new Date().toISOString(),source:"citybpm"}})),
             ...plan.newA.map(a=>{const {id,...rest}=a;return {path:"appointments/"+id,data:rest}})];
           await S.db.batchSet(items,(d,t)=>msg(`Se importă… ${d} din ${t}`));
+          msg("Se actualizează lista de cliente…");await rebuildClientIndex();
           msg("Gata! Importul s-a terminat.");toast("Import terminat");S.needScroll=true;subscribeDay()}
         catch(x){msg("Importul s-a oprit: "+(x.code||x.message)+". Poți încerca din nou, nu se dublează nimic.");$("#impGo").disabled=false}};
     }catch(x){msg("Nu pot citi fișierul: "+(x.message||x))}};
@@ -604,7 +614,11 @@ function startData(){
     if(!s.exists){if(!s.fromCache&&!seeded){seeded=true;db.doc("config/salon").set(DEFAULTS).catch(()=>{})}return}
     const d=s.data();S.services=Array.isArray(d.services)?d.services:[];if(d.hours)S.hours=d.hours;S.autoSms=d.autoSms||{};renderGrid();
     if(d.templatesVersion!==TPL_VERSION&&!S.tplSaving){S.tplSaving=true;db.doc("config/salon").update({templates:TEMPLATES,templatesVersion:TPL_VERSION}).catch(()=>{}).finally(()=>{S.tplSaving=false})}},e=>dataError(e,"Setările")));
-  subs.push(db.collection("clients").onSnapshot(s=>{S.clients=s.docs.map(d=>({id:d.id,...d.data()}))},()=>{}));
+  let idxChecked=false;
+  subs.push(db.collection("clientIndex").onSnapshot(s=>{
+    const map=new Map();s.docs.slice().sort((a,b)=>a.id==="recent"?1:b.id==="recent"?-1:0).forEach(d=>{(d.data().list||[]).forEach(x=>map.set(x.i,{id:x.i,name:x.n,phone:x.p}))});
+    S.clients=[...map.values()];
+    if(!idxChecked&&!s.fromCache){idxChecked=true;if(s.empty)rebuildClientIndex().catch(()=>{})}},()=>{}));
   subscribeDay();
 }
 
