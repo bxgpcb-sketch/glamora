@@ -171,6 +171,7 @@ $("#menuBtn").onclick=()=>{const dr=$("#drawer");
     <button class="item" id="mRem">${ICON.sms}Reamintiri pentru mâine</button>
     <button class="item" id="mClients">${ICON.user}Caută clientă</button>
     <button class="item" id="mAcc">${ICON.user}Detalii cont</button>
+    <button class="item" id="mImp">${ICON.cal}Importă din CityBPM</button>
     ${APP?`<button class="item" id="mSms">${ICON.sms}SMS automate</button>`:""}
     ${!APP&&/android/i.test(navigator.userAgent)?`<a class="item" href="./glamora-sms.apk" download="glamora-sms.apk" style="display:flex;align-items:center;gap:12px;min-height:52px;padding:0 10px;border-radius:12px;font-size:16px;font-weight:600">${ICON.sms}Descarcă Glamora SMS</a>`:""}
     <span style="flex:1"></span>
@@ -185,6 +186,7 @@ $("#menuBtn").onclick=()=>{const dr=$("#drawer");
   $("#mClients").onclick=()=>{close();openClients()};
   $("#mRem").onclick=()=>{close();openReminders(shiftDate(todayStr(),1))};
   $("#mAcc").onclick=()=>{close();openAccount()};
+  $("#mImp").onclick=()=>{close();openImport()};
   if(APP)$("#mSms").onclick=()=>{close();openSmsSettings()};
   let armedOut=false;$("#mOut").onclick=async()=>{if(!armedOut){armedOut=true;$("#mOut").lastChild.textContent="Apasă din nou pentru deconectare";return}
     close();if(APP)try{APP.clearSession()}catch(e){}await authApi.signOut()};
@@ -420,6 +422,50 @@ if(APP)$("#updBtn").onclick=()=>{let st={};try{st=JSON.parse(APP.getSettings())}
   $("#updBtn").disabled=true;$("#updBtn").textContent="Se descarcă…";APP.installUpdate()};
 /* Android back button: close the top overlay first */
 window.glamoraBack=()=>{for(const id of ["#calModal","#drawer","#modal"]){const el=$(id);if(el&&!el.hidden){el.hidden=true;el.innerHTML="";if(id!=="#calModal"||$("#modal").hidden)lockScroll(false);return true}}return false};
+
+/* ---------- one-time import of the CityBPM export (file prepared by Claude: glamora-import.json) ---------- */
+function openImport(){
+  const m=$("#modal");let plan=null;
+  m.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="impTitle">
+    <div class="sheet-head"><h2 id="impTitle">Import din CityBPM</h2><button type="button" class="btn ghost icon" id="xBtn" aria-label="Închide">✕</button></div>
+    <div class="sheet-body" id="impBody">
+      <p style="margin:0 0 12px">Alege fișierul <b>glamora-import.json</b> primit de la Claude. Programările și clientele se adaugă în Glamora. Nu se trimite niciun SMS de confirmare pentru ele.</p>
+      <label class="btn primary" for="impFile" style="width:100%;min-height:52px">Alege fișierul</label>
+      <input type="file" id="impFile" accept=".json,application/json" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+      <p class="hint" id="impMsg" style="margin:12px 0 0;font-size:14px"></p>
+    </div></div>`;
+  m.hidden=false;lockScroll(true);
+  const close=()=>{m.hidden=true;m.innerHTML="";lockScroll(false)};$("#xBtn").onclick=close;
+  const msg=t=>{const e=$("#impMsg");if(e)e.textContent=t};
+  $("#impFile").onchange=async e=>{const file=e.target.files[0];if(!file)return;
+    try{msg("Se citește fișierul…");
+      const data=JSON.parse(await file.text());
+      if(!data||!Array.isArray(data.appointments))throw new Error("fișierul nu e un export Glamora");
+      msg("Se verifică ce există deja în Glamora…");
+      const [as,cs]=await Promise.all([S.db.collection("appointments").get(),S.db.collection("clients").get()]);
+      const haveIds=new Set(as.docs.map(d=>d.id)),haveSlots=new Set(as.docs.map(d=>{const x=d.data();return x.status==="anulata"?"":x.date+"|"+x.start+"|"+x.staff}));
+      const haveCli=new Set(cs.docs.map(d=>d.id));
+      const today=todayStr();
+      const newA=data.appointments.filter(a=>!haveIds.has(a.id)&&!haveSlots.has(a.date+"|"+a.start+"|"+a.staff));
+      const skipped=data.appointments.length-newA.length;
+      const newC=(data.clients||[]).filter(c=>c.id&&!haveCli.has(c.id));
+      plan={newA,newC};
+      const fut=newA.filter(a=>a.date>=today).length;
+      $("#impBody").innerHTML=`<div class="kv"><span>Programări noi</span><b>${newA.length}</b></div>
+        <div class="kv"><span>…dintre care de azi înainte</span><b>${fut}</b></div>
+        <div class="kv"><span>Sărite (există deja în Glamora)</span><b>${skipped}</b></div>
+        <div class="kv"><span>Cliente noi</span><b>${newC.length}</b></div>
+        <p class="hint" style="font-size:13px;margin:10px 0 0">Programările anulate și reprogramate din CityBPM nu se importă. Cele confirmate rămân verzi.</p>
+        <button class="btn primary" id="impGo" style="width:100%;min-height:52px;margin-top:14px"${newA.length+newC.length?"":" disabled"}>Importă</button>
+        <p class="hint" id="impMsg" style="margin:12px 0 0;font-size:14px"></p>`;
+      $("#impGo").onclick=async()=>{$("#impGo").disabled=true;
+        try{const items=[...plan.newC.map(c=>({path:"clients/"+c.id,data:{name:c.name,phone:c.phone,createdAt:new Date().toISOString(),source:"citybpm"}})),
+            ...plan.newA.map(a=>{const {id,...rest}=a;return {path:"appointments/"+id,data:rest}})];
+          await S.db.batchSet(items,(d,t)=>msg(`Se importă… ${d} din ${t}`));
+          msg("Gata! Importul s-a terminat.");toast("Import terminat");S.needScroll=true;subscribeDay()}
+        catch(x){msg("Importul s-a oprit: "+(x.code||x.message)+". Poți încerca din nou, nu se dublează nimic.");$("#impGo").disabled=false}};
+    }catch(x){msg("Nu pot citi fișierul: "+(x.message||x))}};
+}
 
 /* ---------- reminders (from the menu) ---------- */
 function openReminders(day){
