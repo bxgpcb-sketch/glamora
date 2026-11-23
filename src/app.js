@@ -52,8 +52,11 @@ const TEMPLATES={
   remind:"Buna ziua, {zi} {data} la {ora} aveti programare la Salon Vintage piata Mihail Kogalniceanu nr. 6 bl. I2 sc. D ap. 46 zona muzeului de istorie. Va asteptam!",
   remind10:"Buna ziua, {zi} {data} la {ora} aveti programare la Salon Vintage piata Mihail Kogalniceanu nr. 6 bl. I2 sc. D ap. 46 zona muzeului de istorie. Raspundeti cu 1 pentru confirmare sau 0 pentru anulare. Va asteptam!"};
 const ZILE=["duminica","luni","marti","miercuri","joi","vineri","sambata"];
+/* {zi}: „astazi” / „maine” dacă mesajul pleacă în ziua programării sau cu o zi înainte, altfel ziua săptămânii. */
+function dayWord(date){const t=new Date(todayStr()+"T12:00:00"),d=new Date(date+"T12:00:00"),n=Math.round((d-t)/864e5);
+  return n===0?"astazi":n===1?"maine":ZILE[d.getDay()]}
 function fillTpl(t,a){const d=new Date((a.date||todayStr())+"T12:00:00");
-  return t.replace(/\{zi\}/g,ZILE[d.getDay()]).replace(/\{data\}/g,pad(d.getDate())+"."+pad(d.getMonth()+1)+"."+d.getFullYear())
+  return t.replace(/\{zi\}/g,dayWord(a.date||todayStr())).replace(/\{data\}/g,pad(d.getDate())+"."+pad(d.getMonth()+1)+"."+d.getFullYear())
     .replace(/\{ora\}/g,a.start||"").replace(/\{nume\}/g,a.client||"").replace(/\{lucratoare\}/g,staffName(a.staff))
     .replace(/\{serviciu\}/g,a.service||"")}
 function confirmation(a){return fillTpl(TEMPLATES.confirm,a)}

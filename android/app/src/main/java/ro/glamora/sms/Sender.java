@@ -86,7 +86,13 @@ public class Sender {
     static String fill(String tpl, Fb.Doc a) {
         Calendar day = parseDate(a.str("date"));
         String data = String.format(Locale.ROOT, "%02d.%02d.%d", day.get(Calendar.DAY_OF_MONTH), day.get(Calendar.MONTH) + 1, day.get(Calendar.YEAR));
-        return plain(tpl.replace("{zi}", DAYS[day.get(Calendar.DAY_OF_WEEK) - 1]).replace("{data}", data)
+        Calendar today = Calendar.getInstance();
+        today.set(Calendar.HOUR_OF_DAY, 12); today.set(Calendar.MINUTE, 0); today.set(Calendar.SECOND, 0); today.set(Calendar.MILLISECOND, 0);
+        Calendar d12 = (Calendar) day.clone();
+        d12.set(Calendar.HOUR_OF_DAY, 12); d12.set(Calendar.MINUTE, 0); d12.set(Calendar.SECOND, 0); d12.set(Calendar.MILLISECOND, 0);
+        long diff = Math.round((d12.getTimeInMillis() - today.getTimeInMillis()) / 86400000.0);
+        String zi = diff == 0 ? "astazi" : diff == 1 ? "maine" : DAYS[day.get(Calendar.DAY_OF_WEEK) - 1];
+        return plain(tpl.replace("{zi}", zi).replace("{data}", data)
                 .replace("{ora}", a.str("start")).replace("{nume}", a.str("client"))
                 .replace("{lucratoare}", staffName(a.str("staff"))).replace("{serviciu}", a.str("service")));
     }
