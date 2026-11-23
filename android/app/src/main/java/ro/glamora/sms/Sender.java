@@ -50,6 +50,14 @@ public class Sender {
 
     static String digits(String s) { return s == null ? "" : s.replaceAll("\\D", ""); }
 
+    /** Number to send to. "2 0712345678" (a digit left over from the name) becomes "0712345678". */
+    static String number(String s) {
+        String d = digits(s);
+        if (d.length() > 10 && !s.trim().startsWith("+") && !d.startsWith("40") && !d.startsWith("00")
+                && d.substring(d.length() - 10).startsWith("0")) return d.substring(d.length() - 10);
+        return d;
+    }
+
     /** Last 9 digits identify a Romanian mobile number regardless of +40 / 0 prefix. */
     static String key(String phone) {
         String d = digits(phone);
@@ -139,7 +147,7 @@ public class Sender {
                 if ("anulata".equals(a.str("status"))) continue;
                 if (!a.str("confirmRequestedAt").isEmpty() || sentIds.has(a.id)) continue;
 
-                sendSms(c, digits(phone), message(c, a));
+                sendSms(c, number(phone), message(c, a));
                 sentIds.put(a.id, date);
                 pending.put(key(phone), new JSONObject().put("id", a.id).put("date", date).put("client", a.str("client")));
                 p.edit().putString("sentIds", sentIds.toString()).putString("pending", pending.toString()).apply();
@@ -197,7 +205,7 @@ public class Sender {
                     || a.str("date").compareTo(today) < 0) { clearNeeds(c, id); return null; }
             if (c.checkSelfPermission(android.Manifest.permission.SEND_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
                 return "Lipsește permisiunea SMS: confirmarea pentru " + a.str("client") + " nu a plecat.";
-            sendSms(c, digits(a.str("phone")), confirmationText(c, a));
+            sendSms(c, number(a.str("phone")), confirmationText(c, a));
             done.put(id, a.str("date"));
             p.edit().putString("confirmed", done.toString()).apply();
             Map<String, String> upd = new HashMap<>();

@@ -26,13 +26,24 @@ function durLabel(m){const h=Math.floor(m/60),r=m%60;return h?(h+" h"+(r?" "+r:"
 function shiftDate(s,n){const d=new Date(s+"T12:00:00");d.setDate(d.getDate()+n);return ymd(d)}
 function fmtDate(s,opt){return new Date(s+"T12:00:00").toLocaleDateString("ro-RO",opt||{weekday:"long",day:"numeric",month:"long"})}
 function relDay(s){const t=todayStr();return s===t?"Azi":s===shiftDate(t,1)?"Mâine":s===shiftDate(t,-1)?"Ieri":fmtDate(s,{year:"numeric"})}
-function digits(p){return String(p||"").replace(/\D/g,"")}
+/* Cifrele unui număr. Dacă în fața unui număr românesc de 10 cifre (07…, 02…, 03…) a rămas o cifră din nume
+   (ex. „Ecaterina 2 0712…” salvat ca „2 0712…”), cifra în plus se ignoră. */
+function digits(p){const d=String(p||"").replace(/\D/g,"");
+  if(d.length>10&&!String(p).trim().startsWith("+")&&!d.startsWith("40")&&!d.startsWith("00")&&d.slice(-10).startsWith("0"))return d.slice(-10);
+  return d}
 function ppm(){return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ppm"))||2.4}
 function toast(msg){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,2200)}
 function staffName(id){return (STAFF.find(s=>s.id===id)||{}).name||id}
 /* "Maria Pop 0744 123 456" -> {name:"Maria Pop", phone:"0744 123 456"} */
+/* "Ecaterina 2 0712 345 678" -> {name:"Ecaterina 2", phone:"0712 345 678"}: cifrele dinaintea unui număr valid rămân în nume. */
+function goodPhone(t){const d=t.replace(/\D/g,"");return (/^0\d{9}$/.test(d))||(/^(\+|00|40)/.test(t)&&d.length>=11&&d.length<=15)}
 function splitClient(v){v=String(v||"").trim();const m=v.match(/^(.*?)[\s,;-]*((?:\+?\d[\d\s.\-]{5,}\d))$/);
-  return m?{name:m[1].trim(),phone:m[2].trim()}:{name:v,phone:""}}
+  if(!m)return {name:v,phone:""};
+  let name=m[1],ph=m[2];
+  const parts=ph.split(/(?<=\d)[\s]+(?=[\d+])/);
+  if(!goodPhone(ph.replace(/[\s.\-]/g,"")))for(let i=1;i<parts.length;i++){const rest=parts.slice(i).join(" ");
+    if(goodPhone(rest.replace(/[\s.\-]/g,""))){name=(name+" "+parts.slice(0,i).join(" "));ph=rest;break}}
+  return {name:name.trim(),phone:ph.trim()}}
 function isBlock(name){const n=String(name||"").trim().toLowerCase();return S.services.some(s=>s.block&&s.name.toLowerCase()===n)||n==="pauză"||n==="pauza"||n==="ocupat"}
 /* Mesajele către cliente. Se pot schimba aici; aplicația Android le citește din config/salon.templates. */
 const TPL_VERSION=2;
