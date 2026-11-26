@@ -109,8 +109,12 @@ function workRange(ds){const d=new Date(ds+"T12:00:00"),dow=d.getDay();
   const weeks=Math.round((mon-new Date(SCHEDULE.ref+"T12:00:00"))/(7*864e5));
   return (((weeks%2)+2)%2===0?SCHEDULE.morning:SCHEDULE.afternoon).map(toMin)}
 function workLabel(ds){const [a,b]=workRange(ds);return toTime(a)+"–"+toTime(b-15)}
+/* Agenda arată 08:00–20:00; dacă în ziua respectivă e o programare mai devreme sau mai târziu, se extinde până la ea. */
+function dayRange(){let s=toMin(GRID[0]),e=toMin(GRID[1]);
+  for(const a of S.appts){const m=toMin(a.start);if(isNaN(m))continue;s=Math.min(s,Math.floor(m/60)*60);e=Math.max(e,Math.min(24*60,Math.ceil((m+(a.dur||30))/60)*60))}
+  return [s,e]}
 function renderGrid(){
-  const start=toMin(GRID[0]),end=toMin(GRID[1]),k=ppm(),H=(end-start)*k,[ws,we]=workRange(S.date);
+  const [start,end]=dayRange(),k=ppm(),H=(end-start)*k,[ws,we]=workRange(S.date);
   let html="";
   for(const st of STAFF)html+=`<div class="colhead" style="border-bottom-color:${st.color}"><span class="nm">${esc(st.name)}</span><span class="rl">${esc(st.role)}</span></div>`;
   const d=new Date(),nowM=d.getHours()*60+d.getMinutes();
@@ -207,7 +211,7 @@ $("#menuBtn").onclick=()=>{const dr=$("#drawer");
 };
 
 /* ---------- appointment sheet ---------- */
-function timeOptions(sel){const s=toMin(GRID[0]),e=toMin(GRID[1]);let o="";
+function timeOptions(sel){const s=toMin("05:00"),e=toMin("23:00");let o="";
   for(let m=s;m<e;m+=STEP)o+=`<option ${toTime(m)===sel?"selected":""}>${toTime(m)}</option>`;
   if(sel&&(toMin(sel)<s||toMin(sel)>=e))o=`<option selected>${sel}</option>`+o;return o}
 function openAppt(a,pre){
