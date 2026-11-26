@@ -128,9 +128,10 @@ function renderGrid(){
       const title=blk?(a.service||"Ocupat")+(a.client?" · "+a.client:""):(a.client||"Fără nume");
       const svcTxt=!blk&&a.service?a.service:"";
       const size=h<40?"tiny":h<70?"short":"long";
+      const note=String(a.note||"").trim(),ntTxt=note?`<span class="nt">✎ ${esc(note)}</span>`:"";
       const body=size==="tiny"
-        ?`<span class="row1"><span class="n">${mark}${esc(title)}</span>${svcTxt?`<span class="s">${esc(svcTxt)}</span>`:""}</span>`
-        :`<span class="n">${mark}${esc(title)}</span>${svcTxt?`<span class="s">${esc(svcTxt)}</span>`:""}${size==="long"?`<span class="t">${esc(a.start)}–${toTime(toMin(a.start)+(a.dur||30))}</span>`:""}`;
+        ?`<span class="row1"><span class="n">${mark}${esc(title)}</span>${svcTxt?`<span class="s">${esc(svcTxt)}</span>`:""}${ntTxt}</span>`
+        :`<span class="n">${mark}${esc(title)}</span>${svcTxt?`<span class="s">${esc(svcTxt)}</span>`:""}${ntTxt}${size==="long"?`<span class="t">${esc(a.start)}–${toTime(toMin(a.start)+(a.dur||30))}</span>`:""}`;
       c+=`<button class="appt ${size}${blk?" block":""}${st2}" data-id="${esc(a.id)}" style="top:${top}px;height:${h}px;border-left-color:${st.color}">${body}</button>`}
     html+=c+`</div>`}
   const g=$("#grid");g.innerHTML=html;
